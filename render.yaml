@@ -1,0 +1,20 @@
+# This Blueprint enables "1-click deploy" after connecting your Repo to Render
+services:
+  - type: web
+    name: conflictiq-api
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: free # Forces Render to provision exactly on the Free Tier constraints
+    healthCheckPath: /api/v1/health
+    
+    # Render overrides the standard Docker PORT, defaulting effectively to 10000
+    envVars:
+      - key: DATABASE_URL
+        # We explicitly omit passing this in source control. 
+        # Add your Neon.tech DB URL securely via the Render Settings Dashboard UI.
+        sync: false
+        
+      - key: REDIS_URL
+        # Omitted from source control. 
+        # Add your Upstash Redis URL securely via the Render Settings Dashboard UI.
+        sync: false
