@@ -4,6 +4,7 @@ FROM python:3.11-slim
 # Install system utilities required for geospatial models and C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,7 +23,7 @@ RUN pip install https://github.com/explosion/spacy-models/releases/download/en_c
 COPY . .
 
 # Ensure the executable has correct linux permissions AND fix Windows line endings
-RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
+RUN dos2unix start.sh && chmod +x start.sh
 
 # Spin up both the scraper and the API via our unified shell script
-CMD ["./start.sh"]
+CMD ["/bin/bash", "start.sh"]

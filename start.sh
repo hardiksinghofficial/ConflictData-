@@ -12,4 +12,4 @@ python -m poller.scheduler &
 # Start the FastAPI web server in the foreground
 # Render relies on binding to the exact PORT environment variable they pass
 echo "Starting FastAPI web instance on port ${PORT:-10000}..."
-uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-10000}
+python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-10000}
