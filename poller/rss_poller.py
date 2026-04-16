@@ -46,16 +46,20 @@ def extract_location_ner(text: str):
     return places[0] if places else None
 
 def geocode_nominatim(place: str):
-    if not place: return (None, None)
+    if not place: return (None, None, "Unknown", "UNK")
     try:
-        loc = get_geolocator().geocode(place)
+        loc = get_geolocator().geocode(place, addressdetails=True)
         if loc:
-            return (loc.latitude, loc.longitude)
+            addr = loc.raw.get('address', {})
+            country = addr.get('country', "Unknown")
+            iso = addr.get('ISO3166-1:alpha3', addr.get('country_code', "UNK")).upper()
+            if len(iso) > 3: iso = iso[:3]
+            return (loc.latitude, loc.longitude, country, iso)
     except Exception as e:
         log.warning(f"Geocode failed for {place}: {e}")
-    return (None, None)
+    return (None, None, "Unknown", "UNK")
 
-def build_event(entry, lat, lon, source='RSS'):
+def build_event(entry, lat, lon, country, iso3, source='RSS'):
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
     uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, entry.get('link', ''))).split('-')[0]
     return {
@@ -64,8 +68,8 @@ def build_event(entry, lat, lon, source='RSS'):
         "source_reliability": "MEDIUM",
         "event_time": event_time,
         "event_date": event_time.date(),
-        "country": "Unknown",  
-        "country_iso3": "UNK", 
+        "country": country,  
+        "country_iso3": iso3, 
         "lat": lat,           
         "lon": lon,           
         "geo_precision": 3,
@@ -92,14 +96,14 @@ async def poll_rss():
                 
                 text_to_examine = title + ". " + summary
                 location = extract_location_ner(text_to_examine)
-                lat, lon = (0.0, 0.0)
+                lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
                 
                 if location:
-                    geocoded_lat, geocoded_lon = geocode_nominatim(location)
-                    if geocoded_lat is not None and geocoded_lon is not None:
-                        lat, lon = geocoded_lat, geocoded_lon
+                    g_res = geocode_nominatim(location)
+                    if g_res[0] is not None:
+                        lat, lon, country, iso3 = g_res
                 
-                event = build_event(entry, lat, lon, source='RSS')
+                event = build_event(entry, lat, lon, country, iso3, source='RSS')
                 await upsert_event(event)
                 count += 1
         except Exception as e:
