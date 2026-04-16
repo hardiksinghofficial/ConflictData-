@@ -21,8 +21,8 @@ RUN pip install https://github.com/explosion/spacy-models/releases/download/en_c
 # Copy in the API codebase, Poller codebase, and Deployment scripts
 COPY . .
 
-# Ensure the executable has correct linux permissions after git clones
-RUN chmod +x start.sh
+# Ensure the executable has correct linux permissions AND fix Windows line endings
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 # Spin up both the scraper and the API via our unified shell script
 CMD ["./start.sh"]
