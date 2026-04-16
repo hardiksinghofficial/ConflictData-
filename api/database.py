@@ -17,12 +17,21 @@ db = Database()
 
 async def connect_db():
     db.pool = await asyncpg.create_pool(DATABASE_URL)
-    db.redis = redis_async.from_url(REDIS_URL, decode_responses=True)
+    
+    # Use Upstash Serverless REST if provided, otherwise Local Redis
+    upstash_url = os.getenv("UPSTASH_REDIS_REST_URL")
+    upstash_token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+    
+    if upstash_url and upstash_token:
+        from upstash_redis.asyncio import Redis as UpstashRedis
+        db.redis = UpstashRedis(url=upstash_url, token=upstash_token)
+    else:
+        db.redis = redis_async.from_url(REDIS_URL, decode_responses=True)
 
 async def disconnect_db():
     if db.pool:
         await db.pool.close()
-    if db.redis:
+    if db.redis and hasattr(db.redis, 'close') and callable(db.redis.close):
         await db.redis.close()
 
 async def get_db_connection():

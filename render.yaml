@@ -14,7 +14,8 @@ services:
         # Add your Neon.tech DB URL securely via the Render Settings Dashboard UI.
         sync: false
         
-      - key: REDIS_URL
-        # Omitted from source control. 
-        # Add your Upstash Redis URL securely via the Render Settings Dashboard UI.
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+        
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
