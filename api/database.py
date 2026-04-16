@@ -16,7 +16,18 @@ class Database:
 db = Database()
 
 async def connect_db():
-    db.pool = await asyncpg.create_pool(DATABASE_URL)
+    db_url = DATABASE_URL
+    if '?' in db_url:
+        db_url = db_url.split('?')[0]
+        
+    ssl_context = None
+    if "neon.tech" in db_url:
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+    db.pool = await asyncpg.create_pool(db_url, ssl=ssl_context)
     
     # Use Upstash Serverless REST if provided, otherwise Local Redis
     upstash_url = os.getenv("UPSTASH_REDIS_REST_URL")

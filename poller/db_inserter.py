@@ -14,7 +14,18 @@ _pool = None
 async def get_pool():
     global _pool
     if not _pool:
-        _pool = await asyncpg.create_pool(DATABASE_URL)
+        db_url = DATABASE_URL
+        if '?' in db_url:
+            db_url = db_url.split('?')[0]
+            
+        ssl_context = None
+        if "neon.tech" in db_url:
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+        _pool = await asyncpg.create_pool(db_url, ssl=ssl_context)
     return _pool
 
 async def upsert_event(event: Dict[str, Any]):
