@@ -39,19 +39,21 @@ COUNTRY_CENTROIDS = {
     "iran": (32.4279, 53.688, "Iran", "IRN"),
 }
 
+import asyncio
+
 _geolocator = None
 _nlp = None
+_geo_cache = {}
 
 def get_geolocator():
     global _geolocator
     if not _geolocator:
-        _geolocator = Nominatim(user_agent='conflictiq-v3-accuracy')
+        _geolocator = Nominatim(user_agent='conflictiq-v3-accuracy-poller-1')
     return _geolocator
 
 def get_nlp():
     global _nlp
     if not _nlp:
-        # Use medium model for much better NER accuracy
         try:
             _nlp = spacy.load('en_core_web_md')
         except:
@@ -88,25 +90,29 @@ def infer_coordinates(text: str, source_url: str = "") -> Tuple[float, float, st
 
     return (0.0, 0.0, "Unknown", "UNK")
 
-def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tuple[Optional[float], Optional[float], str, str]:
+async def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tuple[Optional[float], Optional[float], str, str]:
     geolocator = get_geolocator()
     
-    # 1. Extract context (countries) from the title
+    # 1. Check Cache
+    cache_key = f"{place}|{title_context}"
+    if cache_key in _geo_cache:
+        return _geo_cache[cache_key]
+
+    # 2. Extract context
     all_entities = extract_location_entities(title_context)
     country_filters = []
-    
     for ent in all_entities:
         iso2 = get_country_iso2(ent)
-        if iso2:
-            country_filters.append(iso2)
+        if iso2: country_filters.append(iso2)
     
-    # 2. Attempt Geocoding with Country Context
     search_query = place if place else title_context
     if not search_query:
         return (0.0, 0.0, "Unknown", "UNK")
 
+    # 3. Rate Limiting: Sleep to avoid 429
+    await asyncio.sleep(1.2)
+
     try:
-        # Pass country_codes filter to Nominatim to disambiguate
         params = {"query": search_query, "addressdetails": True, "timeout": 15}
         if country_filters:
             params["country_codes"] = country_filters
@@ -118,14 +124,17 @@ def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tupl
             country = addr.get('country', "Unknown")
             iso = addr.get('ISO3166-1:alpha3', addr.get('country_code', "UNK")).upper()
             if len(iso) > 3: iso = iso[:3]
-            return (loc.latitude, loc.longitude, country, iso)
+            res = (loc.latitude, loc.longitude, country, iso)
+            _geo_cache[cache_key] = res
+            return res
     except Exception as e:
         log.warning(f"Accuracy Geocode failed: {e}")
 
-    # 3. Fallback to Inference (Hotspots/Centroids)
-    return infer_coordinates(search_query + " " + title_context)
+    # 4. Fallback to Inference
+    res = infer_coordinates(search_query + " " + title_context)
+    _geo_cache[cache_key] = res
+    return res
 
 def extract_location_ner(text: str):
-    # Wrapper for backward compatibility
     entities = extract_location_entities(text)
     return entities[0] if entities else None

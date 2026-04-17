@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import uuid
 
 log = logging.getLogger(__name__)
-GDELT_URL = 'https://api.gdeltproject.org/api/v2/events/query'
+GDELT_URL = 'https://api.gdeltproject.org/api/v2/doc/doc'
 
 def passes_quality_filter(article):
     # Minimal filter to avoid junk
@@ -44,7 +44,7 @@ async def poll_gdelt():
         lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
         
         if location or title:
-            lat_res, lon_res, country_res, iso3_res = geocode_nominatim_with_fallback(location, title)
+            lat_res, lon_res, country_res, iso3_res = await geocode_nominatim_with_fallback(location, title)
             if lat_res is not None:
                 lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
         

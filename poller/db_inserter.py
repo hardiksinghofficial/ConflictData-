@@ -48,7 +48,7 @@ async def upsert_event(event: Dict[str, Any]):
             severity, severity_score, title, notes, tags, source_url, category
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-            $12, $13, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
+            $12::double precision, $13::double precision, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
             $15, $16, $17, $18, $19, $20, $21,
             $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
         )

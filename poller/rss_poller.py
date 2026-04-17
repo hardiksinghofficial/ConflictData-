@@ -22,8 +22,7 @@ CONFLICT_KEYWORDS = ['battle','strike','attack','shelling','airstrike',
 
 from poller.geo_utils import geocode_nominatim_with_fallback, extract_location_ner, get_nlp
 
-def geocode_nominatim(place: str):
-    return geocode_nominatim_with_fallback(place)
+# Wrapper moved to async in geo_utils
 
 def build_event(entry, lat, lon, country, iso3, source='RSS'):
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -69,7 +68,7 @@ async def poll_rss():
                 if location or title:
                     log.info(f"Attempting to geocode with context: {location or 'None'} | Title: {title}")
                     # Use the improved geocoder with fallback logic
-                    lat_res, lon_res, country_res, iso3_res = geocode_nominatim_with_fallback(location, title)
+                    lat_res, lon_res, country_res, iso3_res = await geocode_nominatim_with_fallback(location, title)
                     if lat_res is not None:
                         lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
                         log.info(f"Geocoded successfully to {lat}, {lon}")
