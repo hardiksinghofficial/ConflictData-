@@ -12,7 +12,7 @@
 export PYTHONPATH="/app:${PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 
-PORT="${PORT:-8000}"
+PORT="${PORT:-7860}"
 
 echo "==> Starting ConflictIQ API on port ${PORT}..."
 python -m uvicorn api.main:app --host 0.0.0.0 --port "${PORT}" &
