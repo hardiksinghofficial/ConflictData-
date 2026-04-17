@@ -38,7 +38,7 @@ def build_event(entry, lat, lon, country, iso3, source='RSS'):
         "lat": lat,           
         "lon": lon,           
         "geo_precision": 3,
-        "event_type": "Violence",
+        "event_type": entry.get("event_type", "Violence"),
         "severity": "LOW",
         "severity_score": 3.0,
         "title": entry.get("title", "")[:500],
@@ -76,7 +76,8 @@ async def poll_rss():
                         log.warning(f"Could not geocode even with inference: {title}")
                 
                 from poller.classifier import classify_event
-                cat, sev, c_tags = classify_event(title, summary)
+                cat, sev, c_tags, etype = classify_event(title, summary)
+                entry["event_type"] = etype
                 
                 event = build_event(entry, lat, lon, country, iso3, source='RSS')
                 event['category'] = cat

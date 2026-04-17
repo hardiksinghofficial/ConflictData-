@@ -68,7 +68,7 @@ async def poll_gdelt():
                 lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
         
         from poller.classifier import classify_event
-        cat, sev, c_tags = classify_event(title)
+        cat, sev, c_tags, etype = classify_event(title)
         
         uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
         event_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -84,7 +84,7 @@ async def poll_gdelt():
             "lat": lat,
             "lon": lon,
             "geo_precision": 2 if lat != 0 else 3,
-            "event_type": "Violence",
+            "event_type": etype,
             "severity": "MEDIUM",
             "severity_score": sev,
             "category": cat,

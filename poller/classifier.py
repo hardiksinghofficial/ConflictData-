@@ -33,30 +33,45 @@ CATEGORIES = {
     }
 }
 
+# Event Type definitions
+EVENT_TYPES_MAP = {
+    "Airstrike / Artillery": [r"\bair\s?strike\b", r"\bshelling\b", r"\bmissile\b", r"\bbombing\b", r"\bartiller(y|ies)\b"],
+    "Terrorist Attack": [r"\bsuicide\b", r"\bterror(ist|ism)\b", r"\bblast\b", r"\bied\b", r"\bmassacre\b"],
+    "Armed Clash": [r"\bclash(es)?\b", r"\battle\b", r"\bfights?\b", r"\bclash\b", r"\boffensive\b", r"\binvasion\b"],
+    "Arrests / Detainment": [r"\barrests?\b", r"\bdetain(ed|s)?\b", r"\bcustody\b"],
+    "Strategic Report": [r"\breport\b", r"\banalysis\b", r"\bupdate\b", r"\bsitrep\b"]
+}
+
 def classify_event(title: str, summary: str = "") -> tuple:
     """
     Classifies an event based on title and summary.
-    Returns (category, severity_score, tags)
+    Returns (category, severity_score, tags, event_type)
     """
     combined_text = (title + " " + summary).lower()
     
     found_category = "GENERAL"
     max_severity = 3.0
     tags = []
+    found_event_type = "Violence" # Default
 
+    # 1. Determine Event Type (New Logic)
+    for etype, patterns in EVENT_TYPES_MAP.items():
+        if any(re.search(p, combined_text) for p in patterns):
+            found_event_type = etype
+            break
+
+    # 2. Determine Category (Existing Logic)
     # Priority order: Terrorist > Military > Militant
     for cat_name, config in CATEGORIES.items():
         matched_keywords = []
         for pattern in config["keywords"]:
             if re.search(pattern, combined_text):
-                # Extra check for specifically 'militant' if it's already tagged as Terrorist? 
-                # No, we take the strongest category match.
                 matched_keywords.append(pattern.replace(r"\b", "").replace("?", ""))
         
         if matched_keywords:
             found_category = cat_name
             max_severity = config["base_severity"]
-            tags.extend(matched_keywords[:3]) # Limit tags
-            break # Stop at first (highest priority) category match
+            tags.extend(matched_keywords[:3])
+            break 
 
-    return found_category, max_severity, list(set(tags))
+    return found_category, max_severity, list(set(tags)), found_event_type
