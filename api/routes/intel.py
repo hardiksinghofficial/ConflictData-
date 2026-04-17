@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from api.intel_engine import get_daily_sitrep, get_conflict_trends, get_world_hotspots
+from api.intel_engine import (
+    get_daily_sitrep, get_conflict_trends, get_world_hotspots, get_priority_monitor
+)
 
 router = APIRouter(prefix="/intel", tags=["Intelligence"])
 
@@ -24,5 +26,13 @@ async def hotspots():
     """Find the top 20 active conflict clusters globally."""
     try:
         return await get_world_hotspots()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/monitor")
+async def monitor():
+    """Get the 'Top Level' monitor of critical events (Airstrikes, Bombings, etc)."""
+    try:
+        return await get_priority_monitor()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

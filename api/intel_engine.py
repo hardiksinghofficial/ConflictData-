@@ -84,3 +84,15 @@ async def get_world_hotspots():
     async with db.pool.acquire() as conn:
         rows = await conn.fetch(query)
     return [dict(r) for r in rows]
+async def get_priority_monitor():
+    """Returns the most critical/severe events for the 'Top Level' dashboard feed."""
+    query = """
+    SELECT * FROM conflict_events
+    WHERE severity_score >= 8.5 
+       OR event_type IN ('Airstrike / Artillery', 'Terrorist Attack')
+    ORDER BY event_time DESC
+    LIMIT 15
+    """
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch(query)
+    return [dict(r) for r in rows]
