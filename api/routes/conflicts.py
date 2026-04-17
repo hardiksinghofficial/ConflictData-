@@ -125,6 +125,57 @@ async def get_recent_conflicts(request: Request, days: int = 7, limit: int = 100
     }
     await set_cache(cache_key, response, ttl=300)
     return response
+@router.get("/ongoing")
+async def get_ongoing_conflicts(request: Request, limit: int = 50):
+    """Returns only MILITARY/MILITANT events from the last 48 hours."""
+    cache_key = f"conflicts:ongoing:{limit}"
+    cached = await check_cache(request, cache_key)
+    if cached: return cached
+
+    query = """
+    SELECT * FROM conflict_events 
+    WHERE event_time >= NOW() - INTERVAL '48 hours'
+    AND category IN ('MILITARY', 'MILITANT', 'TERRORIST')
+    ORDER BY event_time DESC LIMIT $1
+    """
+    async with db.pool.acquire() as conn:
+        records = await conn.fetch(query, limit)
+    
+    data = [dict(r) for r in records]
+    for d in data:
+        if d.get("geom"): del d["geom"]
+        d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
+    
+    res = {"status": 200, "success": True, "count": len(data), "data": data}
+    await set_cache(cache_key, res, ttl=60) # Short TTL for live data
+    return res
+
+@router.get("/historical")
+async def get_historical_conflicts(request: Request, days_ago: int = 2, limit: int = 100):
+    """Returns military events older than the specified timeframe (default 2 days)."""
+    cache_key = f"conflicts:historical:{days_ago}:{limit}"
+    cached = await check_cache(request, cache_key)
+    if cached: return cached
+
+    query = """
+    SELECT * FROM conflict_events 
+    WHERE event_time < NOW() - INTERVAL '$1 days'
+    AND category IN ('MILITARY', 'MILITANT', 'TERRORIST')
+    ORDER BY event_time DESC LIMIT $2
+    """
+    # Note: Using parameterized interval is tricky in asyncpg, so we simplify
+    query = query.replace("$1", str(days_ago))
+    async with db.pool.acquire() as conn:
+        records = await conn.fetch(query, limit)
+
+    data = [dict(r) for r in records]
+    for d in data:
+        if d.get("geom"): del d["geom"]
+        d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
+
+    res = {"status": 200, "success": True, "count": len(data), "data": data}
+    await set_cache(cache_key, res, ttl=3600) # Long TTL for history
+    return res
 
 @router.get("/near")
 async def get_conflicts_near(

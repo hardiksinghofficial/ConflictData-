@@ -96,3 +96,25 @@ async def get_priority_monitor():
     async with db.pool.acquire() as conn:
         rows = await conn.fetch(query)
     return [dict(r) for r in rows]
+
+async def get_active_frontlines():
+    """Identifies active frontline clusters based on intensity and recency."""
+    query = """
+    SELECT 
+        ST_X(ST_Centroid(ST_Collect(geom::geometry))) as lon,
+        ST_Y(ST_Centroid(ST_Collect(geom::geometry))) as lat,
+        COUNT(*) as event_count,
+        country,
+        country_iso3,
+        MAX(severity_score) as highest_severity,
+        mode() WITHIN GROUP (ORDER BY event_type) as primary_engagement
+    FROM conflict_events
+    WHERE event_time >= NOW() - INTERVAL '48 hours'
+    AND category IN ('MILITARY', 'MILITANT')
+    GROUP BY country, country_iso3, ST_SnapToGrid(geom::geometry, 1.5)
+    HAVING COUNT(*) >= 2
+    ORDER BY event_count DESC
+    """
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch(query)
+    return [dict(r) for r in rows]
