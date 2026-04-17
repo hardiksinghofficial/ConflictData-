@@ -87,3 +87,20 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_new_conflict_event
 AFTER INSERT ON conflict_events
 FOR EACH ROW EXECUTE FUNCTION notify_new_conflict_event();
+
+-- 5. Intelligence Articles Hub
+CREATE TABLE intel_articles (
+  id              SERIAL PRIMARY KEY,
+  title           VARCHAR(255) NOT NULL,
+  content         TEXT NOT NULL,            -- Supports Markdown
+  author          VARCHAR(100),
+  tags            TEXT[],
+  created_at      TIMESTAMP DEFAULT NOW(),
+  updated_at      TIMESTAMP DEFAULT NOW(),
+  search_vector   TSVECTOR GENERATED ALWAYS AS (
+    to_tsvector('english', title || ' ' || content)
+  ) STORED
+);
+
+CREATE INDEX idx_articles_search ON intel_articles USING GIN(search_vector);
+CREATE INDEX idx_articles_created ON intel_articles(created_at DESC);
