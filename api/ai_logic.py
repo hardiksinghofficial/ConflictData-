@@ -35,7 +35,7 @@ class AIService:
             client = self.clients[self.current_key_index]
             try:
                 stream = await client.chat.completions.create(
-                    model="llama3-8b-8192",
+                    model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": "You are a Senior Military Intelligence Analyst for ConflictIQ. Provide professional, objective, and tactical situation reports based on the data provided."},
                         {"role": "user", "content": prompt}
