@@ -1,7 +1,8 @@
 import httpx
 import logging
 from poller.db_inserter import upsert_event
-from poller.rss_poller import extract_location_ner, geocode_nominatim
+from poller.rss_poller import extract_location_ner
+from poller.geo_utils import geocode_nominatim_with_fallback
 from datetime import datetime, timezone
 import uuid
 
