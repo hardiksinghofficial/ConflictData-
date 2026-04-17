@@ -42,7 +42,8 @@ def extract_location_ner(text: str):
     if not nlp_model or not text:
         return None
     doc = nlp_model(text)
-    places = [ent.text for ent in doc.ents if ent.label_ == 'GPE']
+    # Prefer GPE (Geopolitical Entities), fallback to LOC (Non-GPE locations)
+    places = [ent.text for ent in doc.ents if ent.label_ in ['GPE', 'LOC']]
     return places[0] if places else None
 
 def geocode_nominatim(place: str):
@@ -96,12 +97,18 @@ async def poll_rss():
                 
                 text_to_examine = title + ". " + summary
                 location = extract_location_ner(text_to_examine)
+                
+                # Default to center of world/unknown
                 lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
                 
                 if location:
+                    log.info(f"Attempting to geocode location: {location}")
                     g_res = geocode_nominatim(location)
                     if g_res[0] is not None:
                         lat, lon, country, iso3 = g_res
+                        log.info(f"Geocoded {location} to {lat}, {lon}")
+                    else:
+                        log.warning(f"Could not geocode extracted location: {location}")
                 
                 event = build_event(entry, lat, lon, country, iso3, source='RSS')
                 await upsert_event(event)

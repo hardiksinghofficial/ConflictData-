@@ -1,6 +1,7 @@
 import httpx
 import logging
 from poller.db_inserter import upsert_event
+from poller.rss_poller import extract_location_ner, geocode_nominatim
 from datetime import datetime, timezone
 import uuid
 
@@ -8,7 +9,8 @@ log = logging.getLogger(__name__)
 GDELT_URL = 'https://api.gdeltproject.org/api/v2/events/query'
 
 def passes_quality_filter(article):
-    return True
+    # Minimal filter to avoid junk
+    return len(article.get('title', '')) > 10
 
 async def poll_gdelt():
     params = {
@@ -19,9 +21,13 @@ async def poll_gdelt():
     }
     
     async with httpx.AsyncClient() as client:
-        r = await client.get(GDELT_URL, params=params, timeout=15.0)
-        r.raise_for_status()
-        data = r.json()
+        try:
+            r = await client.get(GDELT_URL, params=params, timeout=15.0)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            log.error(f"Failed to fetch GDELT data: {e}")
+            return
         
     articles = data.get('articles', [])
     log.info(f"GDELT returned {len(articles)} articles.")
@@ -31,6 +37,17 @@ async def poll_gdelt():
         if not passes_quality_filter(article):
              continue
              
+        title = article.get("title", "")
+        location = extract_location_ner(title)
+        
+        # Defaults
+        lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
+        
+        if location:
+            g_res = geocode_nominatim(location)
+            if g_res[0] is not None:
+                lat, lon, country, iso3 = g_res
+        
         uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
         event_time = datetime.now(timezone.utc).replace(tzinfo=None)
         
@@ -40,15 +57,15 @@ async def poll_gdelt():
             "source_reliability": "MEDIUM",
             "event_time": event_time,
             "event_date": event_time.date(),
-            "country": "Ukraine",  
-            "country_iso3": "UKR", 
-            "lat": 48.5,           
-            "lon": 38.0,           
-            "geo_precision": 2,
+            "country": country,
+            "country_iso3": iso3,
+            "lat": lat,
+            "lon": lon,
+            "geo_precision": 2 if lat != 0 else 3,
             "event_type": "Battles",
             "severity": "MEDIUM",
             "severity_score": 6.5,
-            "title": article.get("title", "")[:500],
+            "title": title[:500],
             "source_url": article.get("url", ""),
             "fatalities": 0
         }
