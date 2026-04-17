@@ -4,18 +4,22 @@ services:
     name: conflictiq-api
     env: docker
     dockerfilePath: ./Dockerfile.render
-    plan: free # Forces Render to provision exactly on the Free Tier constraints
-    healthCheckPath: /api/v1/health
-    
+    plan: free
+    # Use the simpler /health path which always responds even if DB is unavailable
+    healthCheckPath: /health
+
     # Render overrides the standard Docker PORT, defaulting effectively to 10000
     envVars:
       - key: DATABASE_URL
-        # We explicitly omit passing this in source control. 
+        # We explicitly omit passing this in source control.
         # Add your Neon.tech DB URL securely via the Render Settings Dashboard UI.
         sync: false
-        
+
       - key: UPSTASH_REDIS_REST_URL
         sync: false
-        
+
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
+
+      - key: PYTHONPATH
+        value: /app

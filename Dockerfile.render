@@ -11,6 +11,8 @@ WORKDIR /app
 
 # Ensure logs flush immediately to the Render console
 ENV PYTHONUNBUFFERED=1
+# Ensure our api/ and poller/ packages are resolvable without needing pip install -e
+ENV PYTHONPATH=/app
 
 # Install exact python dependencies
 COPY requirements.txt .
