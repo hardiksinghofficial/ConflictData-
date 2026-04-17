@@ -65,13 +65,24 @@ def extract_location_entities(text: str) -> List[str]:
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ in ['GPE', 'LOC']]
 
+# Country ISO Mapping (Silent, No Subdivision Logs)
+COUNTRY_MAP = {
+    "ukraine": "UKR", "russia": "RUS", "israel": "ISR", "palestine": "PSE",
+    "gaza": "PSE", "sudan": "SDN", "yemen": "YEM", "syria": "SYR",
+    "lebanon": "LBN", "iran": "IRN", "myanmar": "MMR", "ethiopia": "ETH",
+    "iraq": "IRQ", "taiwan": "TWN", "china": "CHN", "usa": "USA",
+    "burkina": "BFA", "mali": "MLI", "niger": "NER", "congo": "COD"
+}
+
 def get_country_iso2(name: str) -> Optional[str]:
-    try:
-        results = pycountry.countries.search_fuzzy(name)
-        if results:
-            return results[0].alpha_2
-    except:
-        pass
+    # Simplified silent lookup
+    name = name.lower()
+    for k, v in COUNTRY_MAP.items():
+        if k in name:
+            try:
+                c = pycountry.countries.get(alpha_3=v)
+                return c.alpha_2 if c else None
+            except: pass
     return None
 
 def infer_coordinates(text: str, source_url: str = "") -> Tuple[float, float, str, str]:
@@ -80,10 +91,12 @@ def infer_coordinates(text: str, source_url: str = "") -> Tuple[float, float, st
     if "kyivindependent" in source_url.lower():
         return COUNTRY_CENTROIDS["ukraine"]
 
+    # Check high-precision hotspots first
     for keyword, coords in HOTSPOTS.items():
         if keyword in text_lower:
             return coords
 
+    # Check country centroids
     for country, coords in COUNTRY_CENTROIDS.items():
         if country in text_lower:
             return coords
@@ -92,27 +105,32 @@ def infer_coordinates(text: str, source_url: str = "") -> Tuple[float, float, st
 
 async def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tuple[Optional[float], Optional[float], str, str]:
     geolocator = get_geolocator()
-    
-    # 1. Check Cache
-    cache_key = f"{place}|{title_context}"
-    if cache_key in _geo_cache:
-        return _geo_cache[cache_key]
-
-    # 2. Extract context
-    all_entities = extract_location_entities(title_context)
-    country_filters = []
-    for ent in all_entities:
-        iso2 = get_country_iso2(ent)
-        if iso2: country_filters.append(iso2)
-    
     search_query = place if place else title_context
     if not search_query:
         return (0.0, 0.0, "Unknown", "UNK")
 
-    # 3. Rate Limiting: Sleep to avoid 429
-    await asyncio.sleep(1.2)
+    # 1. Check Inference First (Major Pressure Reduction)
+    inf_lat, inf_lon, inf_country, inf_iso = infer_coordinates(search_query + " " + title_context)
+    if inf_lat != 0.0:
+        log.debug(f"Inference hit for: {search_query} -> {inf_country}")
+        return (inf_lat, inf_lon, inf_country, inf_iso)
+
+    # 2. Check Cache
+    cache_key = f"{place}|{title_context}"
+    if cache_key in _geo_cache:
+        return _geo_cache[cache_key]
+
+    # 3. Rate Limiting: Strict 3.0s to avoid shared IP bans on HF
+    await asyncio.sleep(3.0)
 
     try:
+        # Pass country context if we can find it silenty
+        country_filters = []
+        all_entities = extract_location_entities(title_context)
+        for ent in all_entities:
+            iso2 = get_country_iso2(ent)
+            if iso2: country_filters.append(iso2)
+
         params = {"query": search_query, "addressdetails": True, "timeout": 15}
         if country_filters:
             params["country_codes"] = country_filters
@@ -128,12 +146,10 @@ async def geocode_nominatim_with_fallback(place: str, title_context: str = "") -
             _geo_cache[cache_key] = res
             return res
     except Exception as e:
-        log.warning(f"Accuracy Geocode failed: {e}")
+        log.warning(f"Nominatim 429 or Failure: {e}")
 
-    # 4. Fallback to Inference
-    res = infer_coordinates(search_query + " " + title_context)
-    _geo_cache[cache_key] = res
-    return res
+    # Final fallback
+    return (inf_lat, inf_lon, inf_country, inf_iso)
 
 def extract_location_ner(text: str):
     entities = extract_location_entities(text)

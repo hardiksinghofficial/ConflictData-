@@ -14,6 +14,9 @@ def passes_quality_filter(article):
     return len(article.get('title', '')) > 10
 
 async def poll_gdelt():
+    # 1. Stagger startup to avoid simultaneous polling pressure
+    await asyncio.sleep(10)
+    
     params = {
         'query': 'conflict OR battle OR airstrike OR war sourcelang:English',
         'mode': 'artlist',
@@ -21,14 +24,28 @@ async def poll_gdelt():
         'format': 'json',
     }
     
+    data = None
     async with httpx.AsyncClient() as client:
-        try:
-            r = await client.get(GDELT_URL, params=params, timeout=15.0)
-            r.raise_for_status()
-            data = r.json()
-        except Exception as e:
-            log.error(f"Failed to fetch GDELT data: {e}")
-            return
+        # 2. Retry Logic for 429 errors
+        for attempt in range(3):
+            try:
+                r = await client.get(GDELT_URL, params=params, timeout=15.0)
+                if r.status_code == 429:
+                    wait = [15, 45][attempt] if attempt < 2 else 0
+                    if wait:
+                        log.warning(f"GDELT Rate Limited (429). Retrying in {wait}s...")
+                        await asyncio.sleep(wait)
+                        continue
+                r.raise_for_status()
+                data = r.json()
+                break # Success
+            except Exception as e:
+                log.error(f"GDELT Poll Attempt {attempt+1} failed: {e}")
+                if attempt < 2: await asyncio.sleep(10)
+        
+    if not data:
+        log.error("Failed to fetch GDELT data after retries.")
+        return
         
     articles = data.get('articles', [])
     log.info(f"GDELT returned {len(articles)} articles.")
