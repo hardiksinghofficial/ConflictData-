@@ -13,7 +13,9 @@ async def lifespan(app: FastAPI):
     # Startup — wrapped so a DB hiccup doesn't kill the whole process
     try:
         await connect_db()
-        log.info("Database and Redis connected successfully.")
+        from api.bootstrap import bootstrap_db
+        await bootstrap_db()
+        log.info("Database and Redis connected successfully. Bootstrap complete.")
     except Exception as e:
         log.error(f"Startup DB/Redis connection failed (will retry on requests): {e}")
     yield
