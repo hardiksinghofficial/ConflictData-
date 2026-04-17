@@ -31,34 +31,11 @@ def get_nlp():
             nlp = None
     return nlp
 
-def get_geolocator():
-    global geolocator
-    if not geolocator:
-        geolocator = Nominatim(user_agent='conflictiq-v2-dev')
-    return geolocator
-
-def extract_location_ner(text: str):
-    nlp_model = get_nlp()
-    if not nlp_model or not text:
-        return None
-    doc = nlp_model(text)
-    # Prefer GPE (Geopolitical Entities), fallback to LOC (Non-GPE locations)
-    places = [ent.text for ent in doc.ents if ent.label_ in ['GPE', 'LOC']]
-    return places[0] if places else None
+from poller.geo_utils import geocode_nominatim_with_fallback, extract_location_ner
 
 def geocode_nominatim(place: str):
-    if not place: return (None, None, "Unknown", "UNK")
-    try:
-        loc = get_geolocator().geocode(place, addressdetails=True)
-        if loc:
-            addr = loc.raw.get('address', {})
-            country = addr.get('country', "Unknown")
-            iso = addr.get('ISO3166-1:alpha3', addr.get('country_code', "UNK")).upper()
-            if len(iso) > 3: iso = iso[:3]
-            return (loc.latitude, loc.longitude, country, iso)
-    except Exception as e:
-        log.warning(f"Geocode failed for {place}: {e}")
-    return (None, None, "Unknown", "UNK")
+    # Backward compatibility wrapper
+    return geocode_nominatim_with_fallback(place)
 
 def build_event(entry, lat, lon, country, iso3, source='RSS'):
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -101,14 +78,15 @@ async def poll_rss():
                 # Default to center of world/unknown
                 lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
                 
-                if location:
-                    log.info(f"Attempting to geocode location: {location}")
-                    g_res = geocode_nominatim(location)
-                    if g_res[0] is not None:
-                        lat, lon, country, iso3 = g_res
-                        log.info(f"Geocoded {location} to {lat}, {lon}")
+                if location or title:
+                    log.info(f"Attempting to geocode with context: {location or 'None'} | Title: {title}")
+                    # Use the improved geocoder with fallback logic
+                    lat_res, lon_res, country_res, iso3_res = geocode_nominatim_with_fallback(location, title)
+                    if lat_res is not None:
+                        lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
+                        log.info(f"Geocoded successfully to {lat}, {lon}")
                     else:
-                        log.warning(f"Could not geocode extracted location: {location}")
+                        log.warning(f"Could not geocode even with inference: {title}")
                 
                 event = build_event(entry, lat, lon, country, iso3, source='RSS')
                 await upsert_event(event)

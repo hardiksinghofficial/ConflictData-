@@ -43,10 +43,10 @@ async def poll_gdelt():
         # Defaults
         lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
         
-        if location:
-            g_res = geocode_nominatim(location)
-            if g_res[0] is not None:
-                lat, lon, country, iso3 = g_res
+        if location or title:
+            lat_res, lon_res, country_res, iso3_res = geocode_nominatim_with_fallback(location, title)
+            if lat_res is not None:
+                lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
         
         uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
         event_time = datetime.now(timezone.utc).replace(tzinfo=None)
