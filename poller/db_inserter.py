@@ -3,6 +3,7 @@ import asyncpg
 import logging
 from typing import Dict, Any, Optional
 import ssl
+from poller.conflict_tracker import identify_or_create_conflict
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +32,12 @@ async def get_pool():
 async def upsert_event(event: Dict[str, Any]):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Lazy migration: Ensure 'category' column exists
+        # Use Conflict Tracker to group events
         try:
-            await conn.execute("ALTER TABLE conflict_events ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'GENERAL'")
+            conflict_id, conflict_name = await identify_or_create_conflict(conn, event)
         except Exception as e:
-            log.debug(f"Migration check: {e}")
+            log.warning(f"Conflict tracking failed: {e}")
+            conflict_id, conflict_name = None, None
 
         query = """
         INSERT INTO conflict_events (
@@ -45,17 +47,20 @@ async def upsert_event(event: Dict[str, Any]):
             event_type, event_subtype, interaction_code,
             actor1, actor1_type, actor2, actor2_type,
             fatalities, fatalities_civilians, fatalities_confidence,
-            severity, severity_score, title, notes, tags, source_url, category
+            severity, severity_score, title, notes, tags, source_url, category,
+            conflict_id, conflict_name
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
             $12::double precision, $13::double precision, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
             $15, $16, $17, $18, $19, $20, $21,
-            $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+            $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33
         )
         ON CONFLICT (event_id) DO UPDATE SET
             severity_score = EXCLUDED.severity_score,
             notes = EXCLUDED.notes,
             category = EXCLUDED.category,
+            conflict_id = EXCLUDED.conflict_id,
+            conflict_name = EXCLUDED.conflict_name,
             ingested_at = NOW();
         """
         
@@ -90,7 +95,9 @@ async def upsert_event(event: Dict[str, Any]):
             event.get("notes"),
             event.get("tags", []),
             event.get("source_url"),
-            event.get("category", "GENERAL")
+            event.get("category", "GENERAL"),
+            conflict_id,
+            conflict_name
         )
         
         try:

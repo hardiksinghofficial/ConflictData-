@@ -70,7 +70,7 @@ async def get_active_conflicts(request: Request):
     if cached:
         return cached
         
-    query = "SELECT * FROM active_conflicts ORDER BY last_event_at DESC"
+    query = "SELECT * FROM active_conflicts WHERE last_event_at >= NOW() - INTERVAL '7 days' ORDER BY last_event_at DESC LIMIT 20"
     async with db.pool.acquire() as conn:
         records = await conn.fetch(query)
         
@@ -81,5 +81,5 @@ async def get_active_conflicts(request: Request):
         if d.get("last_event_at"):
             d["last_event_at"] = d["last_event_at"].isoformat() + "Z"
             
-    await set_cache(cache_key, data, ttl=1800) # 30min TTL
+    await set_cache(cache_key, data, ttl=300) # 5min TTL for live monitor
     return data
