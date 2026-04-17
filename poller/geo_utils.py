@@ -148,7 +148,15 @@ async def geocode_nominatim_with_fallback(place: str, title_context: str = "") -
         if loc:
             addr = loc.raw.get('address', {})
             country = addr.get('country', "Unknown")
-            iso = addr.get('ISO3166-1:alpha3', addr.get('country_code', "UNK")).upper()
+            iso = addr.get('ISO3166-1:alpha3', addr.get('country_code', "UNK")).upper().strip()
+            
+            # Ensure it's Alpha-3 if possible
+            if len(iso) == 2:
+                try:
+                    c = pycountry.countries.get(alpha_2=iso)
+                    if c: iso = c.alpha_3
+                except: pass
+                
             if len(iso) > 3: iso = iso[:3]
             res = (loc.latitude, loc.longitude, country, iso)
             _geo_cache[cache_key] = res

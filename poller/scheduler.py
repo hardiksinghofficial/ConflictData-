@@ -37,7 +37,13 @@ async def main():
     log.info("Waiting 15 seconds for API/DB to be ready before bootstrap poll...")
     await asyncio.sleep(15)
 
-    log.info("Running initial bootstrap poll...")
+    log.info("Running initial bootstrap cleanup and poll...")
+    try:
+        from poller.db_inserter import retroactive_cleanup
+        await retroactive_cleanup()
+    except Exception as e:
+        log.error(f"Retroactive cleanup failed: {e}")
+
     try:
         await run_poll_gdelt()
     except Exception as e:

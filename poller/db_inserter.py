@@ -108,3 +108,27 @@ async def prune_old_events():
             log.info("Pruned old events.")
     except Exception as e:
         log.error(f"Failed to prune old events: {e}")
+async def retroactive_cleanup():
+    log.info("Starting retroactive data cleanup...")
+    pool = await get_pool()
+    queries = [
+        "UPDATE conflict_events SET country_iso3 = TRIM(country_iso3)",
+        "UPDATE conflict_events SET country_iso3 = 'BLR' WHERE country_iso3 = 'BY'",
+        "UPDATE conflict_events SET country_iso3 = 'THA' WHERE country_iso3 = 'TH'",
+        "UPDATE conflict_events SET country_iso3 = 'RUS' WHERE country_iso3 = 'RU'",
+        "UPDATE conflict_events SET country_iso3 = 'USA' WHERE country_iso3 = 'US'",
+        "UPDATE conflict_events SET country_iso3 = 'SDN' WHERE country_iso3 = 'SD'",
+        "UPDATE conflict_events SET country_iso3 = 'ETH' WHERE country_iso3 = 'ET'",
+        # Fix Event Types
+        "UPDATE conflict_events SET event_type = 'Airstrike / Artillery' WHERE event_type = 'Violence' AND (title ILIKE '%air strike%' OR title ILIKE '%airstrike%' OR title ILIKE '%shelling%' OR title ILIKE '%missile%')",
+        "UPDATE conflict_events SET event_type = 'Terrorist Attack' WHERE event_type = 'Violence' AND (title ILIKE '%terror%' OR title ILIKE '%suicide%' OR title ILIKE '%bombing%' OR title ILIKE '%blast%')",
+        "UPDATE conflict_events SET event_type = 'Armed Clash' WHERE event_type = 'Violence' AND (title ILIKE '%clash%' OR title ILIKE '%battle%' OR title ILIKE '%fighting%')",
+        "UPDATE conflict_events SET event_type = 'Strategic Report' WHERE event_type = 'Violence' AND (title ILIKE '%report%' OR title ILIKE '%analysis%')"
+    ]
+    try:
+        async with pool.acquire() as conn:
+            for q in queries:
+                await conn.execute(q)
+            log.info("Retroactive cleanup complete.")
+    except Exception as e:
+        log.error(f"Failed retroactive cleanup: {e}")
