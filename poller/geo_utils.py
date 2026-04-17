@@ -1,6 +1,8 @@
 import logging
-from typing import Tuple, Optional
+import pycountry
+from typing import Tuple, Optional, List
 from geopy.geocoders import Nominatim
+import spacy
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ HOTSPOTS = {
     "tigray": (13.5, 39.0, "Ethiopia", "ETH"),
 }
 
-# Country Centroids (Fallback for when only country is known)
+# Country Centroids
 COUNTRY_CENTROIDS = {
     "ukraine": (48.3794, 31.1656, "Ukraine", "UKR"),
     "russia": (61.524, 105.3188, "Russia", "RUS"),
@@ -38,54 +40,79 @@ COUNTRY_CENTROIDS = {
 }
 
 _geolocator = None
+_nlp = None
 
 def get_geolocator():
     global _geolocator
     if not _geolocator:
-        _geolocator = Nominatim(user_agent='conflictiq-v2-dev')
+        _geolocator = Nominatim(user_agent='conflictiq-v3-accuracy')
     return _geolocator
 
+def get_nlp():
+    global _nlp
+    if not _nlp:
+        # Use medium model for much better NER accuracy
+        try:
+            _nlp = spacy.load('en_core_web_md')
+        except:
+            _nlp = spacy.load('en_core_web_sm')
+    return _nlp
+
+def extract_location_entities(text: str) -> List[str]:
+    nlp = get_nlp()
+    doc = nlp(text)
+    return [ent.text for ent in doc.ents if ent.label_ in ['GPE', 'LOC']]
+
+def get_country_iso2(name: str) -> Optional[str]:
+    try:
+        results = pycountry.countries.search_fuzzy(name)
+        if results:
+            return results[0].alpha_2
+    except:
+        pass
+    return None
+
 def infer_coordinates(text: str, source_url: str = "") -> Tuple[float, float, str, str]:
-    """
-    Tries multiple strategies to generate valid coordinates for an event title/text.
-    Returns (lat, lon, country_name, country_iso3)
-    """
     text_lower = text.lower()
     
-    # Strategy 1: Source-based defaults
     if "kyivindependent" in source_url.lower():
-        # Almost certainly Ukraine if nothing else matches
-        default = COUNTRY_CENTROIDS["ukraine"]
-    else:
-        default = (0.0, 0.0, "Unknown", "UNK")
+        return COUNTRY_CENTROIDS["ukraine"]
 
-    # Strategy 2: Hotspot Keyword Matching
     for keyword, coords in HOTSPOTS.items():
         if keyword in text_lower:
-            log.info(f"Matched Hotspot: {keyword}")
             return coords
 
-    # Strategy 3: Country Centroid Matching
     for country, coords in COUNTRY_CENTROIDS.items():
         if country in text_lower:
-            log.info(f"Matched Country Centroid: {country}")
             return coords
 
-    # Strategy 4: Nominatim Geocoding (attempt from text directly)
-    # This is handled by the caller (rss_poller/gdelt_poller) who calls geocode_nominatim
-    # but we can return the default if all fails.
-    
-    return default
+    return (0.0, 0.0, "Unknown", "UNK")
 
 def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tuple[Optional[float], Optional[float], str, str]:
-    """
-    Full geocoding flow: Nominatim -> Hotspots -> Country Centroids
-    """
-    if not place:
-        return infer_coordinates(title_context)
+    geolocator = get_geolocator()
+    
+    # 1. Extract context (countries) from the title
+    all_entities = extract_location_entities(title_context)
+    country_filters = []
+    
+    for ent in all_entities:
+        iso2 = get_country_iso2(ent)
+        if iso2:
+            country_filters.append(iso2)
+    
+    # 2. Attempt Geocoding with Country Context
+    search_query = place if place else title_context
+    if not search_query:
+        return (0.0, 0.0, "Unknown", "UNK")
 
     try:
-        loc = get_geolocator().geocode(place, addressdetails=True, timeout=10)
+        # Pass country_codes filter to Nominatim to disambiguate
+        params = {"query": search_query, "addressdetails": True, "timeout": 15}
+        if country_filters:
+            params["country_codes"] = country_filters
+            
+        loc = geolocator.geocode(**params)
+        
         if loc:
             addr = loc.raw.get('address', {})
             country = addr.get('country', "Unknown")
@@ -93,7 +120,12 @@ def geocode_nominatim_with_fallback(place: str, title_context: str = "") -> Tupl
             if len(iso) > 3: iso = iso[:3]
             return (loc.latitude, loc.longitude, country, iso)
     except Exception as e:
-        log.warning(f"Geocode failed for {place}: {e}")
+        log.warning(f"Accuracy Geocode failed: {e}")
 
-    # If Nominatim fails or returns nothing, fall back to inference from the place name or title
-    return infer_coordinates(place + " " + title_context)
+    # 3. Fallback to Inference (Hotspots/Centroids)
+    return infer_coordinates(search_query + " " + title_context)
+
+def extract_location_ner(text: str):
+    # Wrapper for backward compatibility
+    entities = extract_location_entities(text)
+    return entities[0] if entities else None

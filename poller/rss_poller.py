@@ -17,24 +17,9 @@ RSS_FEEDS = [
 CONFLICT_KEYWORDS = ['battle','strike','attack','shelling','airstrike',
                      'missile','killed','fatalities','troops','offensive', 'war', 'army']
 
-nlp = None
-geolocator = None
-
-def get_nlp():
-    global nlp
-    if not nlp:
-        try:
-            log.info("Loading spacy model...")
-            nlp = spacy.load('en_core_web_sm')
-        except Exception as e:
-            log.error(f"Spacy load failed: {e}")
-            nlp = None
-    return nlp
-
-from poller.geo_utils import geocode_nominatim_with_fallback, extract_location_ner
+from poller.geo_utils import geocode_nominatim_with_fallback, extract_location_ner, get_nlp
 
 def geocode_nominatim(place: str):
-    # Backward compatibility wrapper
     return geocode_nominatim_with_fallback(place)
 
 def build_event(entry, lat, lon, country, iso3, source='RSS'):
