@@ -1,0 +1,31 @@
+# Dockerfile for Koyeb deployment
+FROM python:3.11-slim
+
+# dos2unix fixes Windows CRLF line endings in start.sh (written on Windows)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    dos2unix \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Ensure logs flush immediately to the Koyeb console
+ENV PYTHONUNBUFFERED=1
+# Ensure api/ and poller/ packages are resolvable as Python modules
+ENV PYTHONPATH=/app
+
+# Install Python dependencies first (better layer caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install spaCy English model via direct GitHub release URL
+RUN pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+
+# Copy application code
+COPY . .
+
+# Fix Windows CRLF line endings and set executable bit on startup script
+RUN dos2unix start.sh && chmod +x start.sh
+
+# Koyeb injects PORT env var; start.sh defaults to 8000 if not set
+CMD ["/bin/bash", "start.sh"]

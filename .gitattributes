@@ -1,0 +1,3 @@
+# Force LF line endings for shell scripts regardless of OS
+# This prevents Windows CRLF from breaking bash execution inside Docker
+*.sh text eol=lf

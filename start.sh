@@ -1,43 +1,39 @@
 #!/usr/bin/env bash
 
-# IMPORTANT:
-# This script runs both the FastAPI web server and the background poller
-# in a single container to stay within Render Free Tier single-service limits.
+# ConflictIQ startup script — runs both FastAPI and the background poller
+# in a single container (fits within Koyeb's free web service quota).
 #
-# Startup order matters:
-#   1. Start uvicorn (web API) first so Render's health check can pass.
-#   2. Wait a few seconds for uvicorn to bind.
-#   3. Start the poller in background — any crash there won't affect the web server.
+# Startup order:
+#   1. Start uvicorn first so Koyeb's health check passes quickly.
+#   2. Wait 5 seconds for uvicorn to fully bind.
+#   3. Start the poller in the background — a poller crash won't kill the API.
 
 # Ensure Python resolves our packages correctly
 export PYTHONPATH="/app:${PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 
-PORT="${PORT:-10000}"
+PORT="${PORT:-8000}"
 
 echo "==> Starting ConflictIQ API on port ${PORT}..."
-# Run uvicorn in background first
 python -m uvicorn api.main:app --host 0.0.0.0 --port "${PORT}" &
 UVICORN_PID=$!
 
-# Give uvicorn time to bind before Render fires the health check
 echo "==> Waiting 5 seconds for web server to initialise..."
 sleep 5
 
-# Verify uvicorn is still running
+# Verify uvicorn is still alive
 if ! kill -0 "${UVICORN_PID}" 2>/dev/null; then
     echo "ERROR: uvicorn failed to start. Aborting."
     exit 1
 fi
 
 echo "==> Web server is up (PID ${UVICORN_PID}). Starting background poller..."
-# Start poller in background; errors here should NOT kill the web server
 python -m poller.scheduler &
 POLLER_PID=$!
 
-echo "==> All processes started. Monitoring web server (PID ${UVICORN_PID})..."
+echo "==> All processes running. Container will exit when web server stops."
 
-# Keep container alive by waiting on uvicorn (the primary process)
+# Keep container alive — wait on uvicorn (primary process)
 wait "${UVICORN_PID}"
 echo "==> Web server exited. Shutting down poller..."
 kill "${POLLER_PID}" 2>/dev/null || true
