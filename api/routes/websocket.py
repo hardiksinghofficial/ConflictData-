@@ -30,15 +30,29 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+async def broadcast_with_priority(payload: str):
+    try:
+        data = json.loads(payload)
+        # Add priority flag for critical categories
+        if data.get("category") in ["MILITARY", "TERRORIST"]:
+            data["priority"] = True
+            log.info(f"==> PRIORITY ALERT: {data.get('title')}")
+        else:
+            data["priority"] = False
+        
+        await manager.broadcast(json.dumps(data))
+    except Exception as e:
+        log.error(f"WS Broadcast error: {e}")
+        await manager.broadcast(payload)
+
 async def listen_to_pg_events():
     """Background task to listen to PostgreSQL NOTIFY and broadcast via WS."""
-    # We must maintain this connection open indefinitely
     while True:
         try:
             async with db.pool.acquire() as conn:
-                await conn.add_listener("new_conflict_event", lambda c, pid, channel, payload: asyncio.create_task(manager.broadcast(payload)))
+                await conn.add_listener("new_conflict_event", lambda c, pid, channel, payload: asyncio.create_task(broadcast_with_priority(payload)))
                 while True:
-                    await asyncio.sleep(60) # Keep holding the connection for LISTEN
+                    await asyncio.sleep(60) 
         except Exception as e:
             log.error(f"WS PG Listener error: {e}, retrying in 5s...")
             await asyncio.sleep(5)

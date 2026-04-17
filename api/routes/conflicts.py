@@ -222,3 +222,30 @@ async def get_conflict_detail(event_id: str):
         "data": d,
         "meta": {"from_cache": False}
     }
+
+@router.get("/clusters")
+async def get_clusters(precision: float = Query(1.0, ge=0.1, le=5.0), days: int = 7):
+    """
+    Cluster events for map display using a grid-based approach.
+    Precision 1.0 = ~111km grid. Precision 0.1 = ~11km grid.
+    """
+    from_date = date.today() - timedelta(days=days)
+    query = """
+    SELECT 
+        ST_X(ST_Centroid(ST_Collect(geom::geometry))) as lon,
+        ST_Y(ST_Centroid(ST_Collect(geom::geometry))) as lat,
+        COUNT(*) as count,
+        mode() WITHIN GROUP (ORDER BY category) as main_category,
+        mode() WITHIN GROUP (ORDER BY severity) as main_severity
+    FROM conflict_events
+    WHERE event_date >= $1
+    GROUP BY ST_SnapToGrid(geom::geometry, $2)
+    """
+    async with db.pool.acquire() as conn:
+        records = await conn.fetch(query, from_date, precision)
+        
+    return {
+        "status": 200,
+        "count": len(records),
+        "data": [dict(r) for r in records]
+    }

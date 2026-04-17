@@ -12,6 +12,9 @@ RSS_FEEDS = [
     'https://feeds.bbci.co.uk/news/world/rss.xml',
     'https://www.aljazeera.com/xml/rss/all.xml',
     'https://kyivindependent.com/feed',
+    'https://www.crisisgroup.org/rss/crisiswatch.xml',
+    'https://news.un.org/feed/subscribe/en/news/all/rss.xml',
+    'https://www.hrw.org/rss/news',
 ]
 
 CONFLICT_KEYWORDS = ['battle','strike','attack','shelling','airstrike',

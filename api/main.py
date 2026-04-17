@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api.database import connect_db, disconnect_db, db
-from api.routes import conflicts, stats, websocket
+from api.routes import conflicts, stats, websocket, intel
 
 log = logging.getLogger("api.main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(conflicts.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
 app.include_router(websocket.router, prefix="/api/v1")
+app.include_router(intel.router, prefix="/api/v1")
 
 @app.get("/", tags=["Root"])
 async def root():
