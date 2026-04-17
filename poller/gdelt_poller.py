@@ -1,5 +1,6 @@
 import httpx
 import logging
+import asyncio
 from poller.db_inserter import upsert_event
 from poller.rss_poller import extract_location_ner
 from poller.geo_utils import geocode_nominatim_with_fallback

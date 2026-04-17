@@ -21,9 +21,14 @@ HOTSPOTS = {
     "darfur": (13.0, 25.0, "Sudan", "SDN"),
     "khartoum": (15.5007, 32.5599, "Sudan", "SDN"),
     "tigray": (13.5, 39.0, "Ethiopia", "ETH"),
+    "kabul": (34.555, 69.207, "Afghanistan", "AFG"),
+    "mali": (17.57, -3.99, "Mali", "MLI"),
+    "bamako": (12.639, -8.002, "Mali", "MLI"),
+    "paris": (48.8566, 2.3522, "France", "FRA"),
+    "beirut": (33.888, 35.495, "Lebanon", "LBN"),
 }
 
-# Country Centroids
+# Country Centroids (Silent & Fast)
 COUNTRY_CENTROIDS = {
     "ukraine": (48.3794, 31.1656, "Ukraine", "UKR"),
     "russia": (61.524, 105.3188, "Russia", "RUS"),
@@ -37,6 +42,9 @@ COUNTRY_CENTROIDS = {
     "iraq": (33.2232, 43.6793, "Iraq", "IRQ"),
     "lebanon": (33.8547, 35.8623, "Lebanon", "LBN"),
     "iran": (32.4279, 53.688, "Iran", "IRN"),
+    "afghanistan": (33.939, 67.71, "Afghanistan", "AFG"),
+    "france": (46.227, 2.213, "France", "FRA"),
+    "burkina": (12.238, -1.56, "Burkina Faso", "BFA"),
 }
 
 import asyncio
@@ -120,8 +128,8 @@ async def geocode_nominatim_with_fallback(place: str, title_context: str = "") -
     if cache_key in _geo_cache:
         return _geo_cache[cache_key]
 
-    # 3. Rate Limiting: Strict 3.0s to avoid shared IP bans on HF
-    await asyncio.sleep(3.0)
+    # 3. Rate Limiting: Strict 4.0s to avoid shared IP bans on HF
+    await asyncio.sleep(4.0)
 
     try:
         # Pass country context if we can find it silenty
