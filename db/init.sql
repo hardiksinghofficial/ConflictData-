@@ -57,6 +57,7 @@ CREATE TABLE conflict_events (
   source_url      TEXT,
   conflict_name   VARCHAR(200),    -- 'Russo-Ukrainian War'
   conflict_id     INTEGER REFERENCES active_conflicts(conflict_id),
+  category        VARCHAR(20) DEFAULT 'GENERAL',
 
   ingested_at     TIMESTAMP DEFAULT NOW()
 );
@@ -66,6 +67,7 @@ CREATE INDEX idx_event_time   ON conflict_events(event_time DESC);
 CREATE INDEX idx_country_time ON conflict_events(country_iso3, event_time DESC);
 CREATE INDEX idx_geom         ON conflict_events USING GIST(geom);
 CREATE INDEX idx_severity     ON conflict_events(severity_score DESC);
+CREATE INDEX idx_category     ON conflict_events(category);
 CREATE INDEX idx_type         ON conflict_events(event_type, event_time DESC);
 CREATE INDEX idx_tags         ON conflict_events USING GIN(tags);
 

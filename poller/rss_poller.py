@@ -73,7 +73,18 @@ async def poll_rss():
                     else:
                         log.warning(f"Could not geocode even with inference: {title}")
                 
+                from poller.classifier import classify_event
+                cat, sev, c_tags = classify_event(title, summary)
+                
                 event = build_event(entry, lat, lon, country, iso3, source='RSS')
+                event['category'] = cat
+                event['severity_score'] = sev
+                # Add classification tags to existing tags
+                if 'tags' not in event or not event['tags']:
+                    event['tags'] = c_tags
+                else:
+                    event['tags'] = list(set(event['tags'] + c_tags))
+                
                 await upsert_event(event)
                 count += 1
         except Exception as e:

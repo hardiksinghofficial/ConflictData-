@@ -22,6 +22,7 @@ async def set_cache(cache_key: str, data: dict, ttl: int):
 async def get_conflicts(
     request: Request,
     country: Optional[str] = None,
+    category: Optional[str] = None,
     from_date: Optional[date] = Query(default_factory=lambda: date.today() - timedelta(days=7)),
     to_date: Optional[date] = Query(default_factory=lambda: date.today()),
     event_type: Optional[str] = None,
@@ -31,7 +32,7 @@ async def get_conflicts(
     limit: int = Query(100, le=500),
     offset: int = 0
 ):
-    cache_key = f"conflicts:{country}:{from_date}:{to_date}:{event_type}:{severity}:{min_fatalities}:{tags}:{limit}:{offset}"
+    cache_key = f"conflicts:{country}:{category}:{from_date}:{to_date}:{event_type}:{severity}:{min_fatalities}:{tags}:{limit}:{offset}"
     cached = await check_cache(request, cache_key)
     if cached:
         cached["meta"]["from_cache"] = True
@@ -44,6 +45,10 @@ async def get_conflicts(
     if country:
         query += f" AND country_iso3 = ${idx}"
         params.append(country)
+        idx += 1
+    if category:
+        query += f" AND category = ${idx}"
+        params.append(category.upper())
         idx += 1
     if event_type:
         query += f" AND event_type = ${idx}"
