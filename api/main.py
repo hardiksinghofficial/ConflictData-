@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from api.database import connect_db, disconnect_db, db
 from api.routes import conflicts, stats, websocket, intel, intel_hub, ai_analyst
 import os
+from contextlib import asynccontextmanager
 
 log = logging.getLogger("api.main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
