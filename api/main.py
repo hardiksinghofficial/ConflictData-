@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from api.database import connect_db, disconnect_db, db
-from api.routes import conflicts, stats, websocket, intel, intel_hub, ai_analyst
+from api.routes import conflicts, stats, websocket, intel, intel_hub, ai_analyst, data_api
 import os
 from contextlib import asynccontextmanager
 
