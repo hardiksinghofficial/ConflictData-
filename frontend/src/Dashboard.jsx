@@ -59,42 +59,60 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
+        const safeFetch = async (url) => {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data;
+          } catch (e) {
+            console.error(`Fetch failed for ${url}:`, e);
+            return null;
+          }
+        };
+
         const [statsRes, eventsRes, monitorRes, frontRes, hotRes, trendRes, sitrepRes, theaterRes] = await Promise.all([
-          fetch(`${API_BASE}/api/v1/stats/stats`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/conflicts/ongoing?limit=100`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/monitor`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/frontlines`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/hotspots`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/trends`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/sitrep`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/theaters`).then(r => r.json())
+          safeFetch(`${API_BASE}/api/v1/stats/stats`),
+          safeFetch(`${API_BASE}/api/v1/conflicts/ongoing?limit=100`),
+          safeFetch(`${API_BASE}/api/v1/intel/monitor`),
+          safeFetch(`${API_BASE}/api/v1/intel/frontlines`),
+          safeFetch(`${API_BASE}/api/v1/intel/hotspots`),
+          safeFetch(`${API_BASE}/api/v1/intel/trends`),
+          safeFetch(`${API_BASE}/api/v1/intel/sitrep`),
+          safeFetch(`${API_BASE}/api/v1/intel/theaters`)
         ]);
 
-        const ongoingEvents = eventsRes.data || [];
+        const ongoingEvents = (eventsRes && eventsRes.data) || [];
         setEvents(ongoingEvents);
-        setStats({ 
-          total_events: statsRes.total_events || 0, 
-          active_wars: 0, 
-          high_severity: statsRes.by_severity?.HIGH || 0,
-          sitrep: sitrepRes 
-        });
+
+        if (statsRes) {
+          setStats({ 
+            total_events: statsRes.total_events || 0, 
+            active_wars: 0, 
+            high_severity: statsRes.by_severity?.HIGH || 0,
+            sitrep: sitrepRes 
+          });
+        }
+        
+        const safeArr = (arr) => Array.isArray(arr) ? arr : [];
+
         setLayerData({ 
-          monitor: monitorRes || [], 
-          frontlines: frontRes || [], 
-          hotspots: hotRes || [], 
-          trends: trendRes || [],
-          theaters: theaterRes || []
+          monitor: safeArr(monitorRes), 
+          frontlines: safeArr(frontRes), 
+          hotspots: safeArr(hotRes), 
+          trends: safeArr(trendRes),
+          theaters: safeArr(theaterRes)
         });
 
         // Sync Layer Counts
         setLayers(prev => ({
           ...prev,
           kinetic: { ...prev.kinetic, count: ongoingEvents.length },
-          theaters: { ...prev.theaters, count: (theaterRes || []).length },
-          priority: { ...prev.priority, count: (monitorRes || []).length },
-          frontlines: { ...prev.frontlines, count: (frontRes || []).length },
-          hotspots: { ...prev.hotspots, count: (hotRes || []).length },
-          surges: { ...prev.surges, count: (trendRes || []).length },
+          theaters: { ...prev.theaters, count: safeArr(theaterRes).length },
+          priority: { ...prev.priority, count: safeArr(monitorRes).length },
+          frontlines: { ...prev.frontlines, count: safeArr(frontRes).length },
+          hotspots: { ...prev.hotspots, count: safeArr(hotRes).length },
+          surges: { ...prev.surges, count: safeArr(trendRes).length },
           civilians: { ...prev.civilians, count: ongoingEvents.filter(e => e.fatalities_civilians > 0).length }
         }));
 

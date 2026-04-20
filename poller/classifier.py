@@ -2,8 +2,11 @@ import logging
 import re
 import os
 import json
+import asyncio
 from typing import Dict, Any, Tuple, List, Optional
-from groq import AsyncGroq, RateLimitError
+from groq import AsyncGroq
+import google.generativeai as genai
+from huggingface_hub import AsyncInferenceClient
 
 log = logging.getLogger(__name__)
 
@@ -45,36 +48,98 @@ EVENT_TYPES_MAP = {
     "Strategic Report": [r"\breport\b", r"\banalysis\b", r"\bupdate\b", r"\bsitrep\b"]
 }
 
-# AI Classifier Setup
+# --- MULTI-ENGINE CLIENT SETUP ---
 _groq_client = None
+_hf_client = None
+_gemini_configured = False
+
 def get_groq_client():
     global _groq_client
     if not _groq_client:
         api_key = os.getenv("GROQ_API_KEY")
-        if api_key:
-            _groq_client = AsyncGroq(api_key=api_key)
+        if api_key: _groq_client = AsyncGroq(api_key=api_key)
     return _groq_client
+
+def get_hf_client():
+    global _hf_client
+    if not _hf_client:
+        token = os.getenv("HF_TOKEN")
+        if token: _hf_client = AsyncInferenceClient(token=token)
+    return _hf_client
+
+def configure_gemini():
+    global _gemini_configured
+    if not _gemini_configured:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            _gemini_configured = True
+    return _gemini_configured
+
+# --- CLASSIFICATION ENGINES ---
+
+async def classify_with_groq(prompt: str) -> Optional[Dict]:
+    client = get_groq_client()
+    if not client: return None
+    try:
+        completion = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a professional conflict intelligence analyst. Output ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(completion.choices[0].message.content)
+    except Exception as e:
+        if "429" in str(e): log.warning("Groq Rate Limited. Trying fallback...")
+        else: log.error(f"Groq Engine Error: {e}")
+        return None
+
+async def classify_with_gemini(prompt: str) -> Optional[Dict]:
+    if not configure_gemini(): return None
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Gemini expects structured feedback, we wrap it
+        response = await asyncio.to_thread(model.generate_content, f"{prompt}\nReturn ONLY JSON.")
+        text = response.text
+        # Clean potential markdown wrapping
+        text = text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+    except Exception as e:
+        log.error(f"Gemini Engine Error: {e}")
+        return None
+
+async def classify_with_hf(prompt: str) -> Optional[Dict]:
+    client = get_hf_client()
+    if not client: return None
+    try:
+        # Using Llama 3.3 70B via Serverless Inference API
+        model_id = "meta-llama/Llama-3.3-70B-Instruct"
+        messages = [
+            {"role": "system", "content": "You are a professional conflict intelligence analyst. Output ONLY valid JSON."},
+            {"role": "user", "content": prompt}
+        ]
+        response = await client.chat_completion(
+            model=model_id,
+            messages=messages,
+            max_tokens=1000,
+            temperature=0.1
+        )
+        text = response.choices[0].message.content
+        text = text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+    except Exception as e:
+        log.error(f"HF Inference Error: {e}")
+        return None
+
+# --- MAIN GATEWAY ---
 
 async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     """
-    Advanced LLM-based classification for high-precision intelligence.
-    Returns a dictionary with structured event data.
+    Resilient Multi-Engine Classification Gateway.
+    Tries Groq -> Gemini -> HF -> Regex Fallback.
     """
-    client = get_groq_client()
-    if not client:
-        # Fallback to regex if no AI key
-        cat, sev, tags, etype = classify_event(title, summary)
-        return {
-            "category": cat,
-            "severity_score": sev,
-            "tags": tags,
-            "event_type": etype,
-            "actor1": None,
-            "actor2": None,
-            "fatalities": 0,
-            "notes": "Classification: Regex (Fallback)"
-        }
-
     prompt = f"""
     Analyze this news event for a conflict intelligence database:
     Title: {title}
@@ -93,44 +158,48 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     - summary_short: 1 sentence tactical summary
     """
 
-    try:
-        completion = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a professional conflict intelligence analyst. Output ONLY valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        
-        res = json.loads(completion.choices[0].message.content)
-        return {
-            "category": res.get("category", "GENERAL").upper(),
-            "severity_score": float(res.get("severity_score", 3.0)),
-            "location": res.get("location_city"),
-            "country": res.get("location_country"),
-            "tags": list(set([res.get("actor1"), res.get("weapon")] + (res.get("weapon_list", []) if isinstance(res.get("weapon_list"), list) else []))),
-            "event_type": res.get("event_type", "Other"),
-            "actor1": res.get("actor1"),
-            "actor2": res.get("actor2"),
-            "fatalities": int(res.get("fatalities", 0)),
-            "notes": res.get("summary_short", ""),
-            "ai_classified": True
-        }
-    except Exception as e:
-        log.error(f"LLM Classification failed: {e}")
-        cat, sev, tags, etype = classify_event(title, summary)
-        return {
-            "category": cat,
-            "severity_score": sev,
-            "tags": tags,
-            "event_type": etype,
-            "actor1": None,
-            "actor2": None,
-            "fatalities": 0,
-            "notes": f"Fallback: {str(e)}",
-            "ai_classified": False
-        }
+    # ENGINE TIER 1: GROQ
+    res = await classify_with_groq(prompt)
+    if res: return parse_llm_res(res, "GROQ")
+
+    # ENGINE TIER 2: GEMINI
+    res = await classify_with_gemini(prompt)
+    if res: return parse_llm_res(res, "GEMINI")
+
+    # ENGINE TIER 3: HF INFERENCE
+    res = await classify_with_hf(prompt)
+    if res: return parse_llm_res(res, "HF-API")
+
+    # FINAL FALLBACK: REGEX
+    cat, sev, tags, etype = classify_event(title, summary)
+    return {
+        "category": cat,
+        "severity_score": sev,
+        "tags": tags,
+        "event_type": etype,
+        "actor1": None,
+        "actor2": None,
+        "fatalities": 0,
+        "notes": f"Classification: Regex Fallback (All AI Engines Failed)",
+        "ai_classified": False,
+        "provider": "REGEX"
+    }
+
+def parse_llm_res(res: Dict, provider: str) -> Dict[str, Any]:
+    return {
+        "category": res.get("category", "GENERAL").upper(),
+        "severity_score": float(res.get("severity_score", 3.0)),
+        "location": res.get("location_city"),
+        "country": res.get("location_country"),
+        "tags": list(set([res.get("actor1"), res.get("weapon")] + (res.get("weapon_list", []) if isinstance(res.get("weapon_list"), list) else []))),
+        "event_type": res.get("event_type", "Other"),
+        "actor1": res.get("actor1"),
+        "actor2": res.get("actor2"),
+        "fatalities": int(res.get("fatalities", 0)),
+        "notes": res.get("summary_short", ""),
+        "ai_classified": True,
+        "provider": provider
+    }
 
 def classify_event(title: str, summary: str = "") -> tuple:
     """
