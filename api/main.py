@@ -49,6 +49,7 @@ app.include_router(websocket.router, prefix="/api/v1")
 app.include_router(intel.router, prefix="/api/v1")
 app.include_router(intel_hub.router, prefix="/api/v1")
 app.include_router(ai_analyst.router, prefix="/api/v1")
+app.include_router(data_api.router, prefix="/api/v1")
 
 # --- Frontend Serving Layer ---
 # Check if frontend/dist exists
