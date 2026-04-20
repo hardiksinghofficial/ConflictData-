@@ -73,51 +73,53 @@ async def poll_gdelt():
         if not passes_quality_filter(article):
              continue
              
-        title = article.get("title", "")
-        # GDELT titles can be messy, clean them up if needed
-        title = title.replace("\n", " ").strip()
+        title = article.get("title", "").replace("\n", " ").strip()
         
-        location = extract_location_ner(title)
-        
-        # Defaults
-        lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
-        
-        if location or title:
-            lat_res, lon_res, country_res, iso3_res = await geocode_nominatim_with_fallback(location, title)
-            if lat_res is not None:
-                lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
-        
-        # --- NEW: AI-POWERED CLASSIFICATION ---
-        ai_res = await classify_event_llm(title)
-        
-        uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
-        event_time = datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        event = {
-            "event_id": f"CIQ-{event_time.strftime('%Y%m%d')}-GLB-{uniq}",
-            "source": "GDELT",
-            "source_reliability": "MEDIUM",
-            "event_time": event_time,
-            "event_date": event_time.date(),
-            "country": country,
-            "country_iso3": iso3,
-            "lat": lat,
-            "lon": lon,
-            "geo_precision": 2 if lat != 0 else 3,
-            "event_type": ai_res["event_type"],
-            "severity": "HIGH" if ai_res["severity_score"] > 7 else "MEDIUM" if ai_res["severity_score"] > 4 else "LOW",
-            "severity_score": ai_res["severity_score"],
-            "category": ai_res["category"],
-            "tags": ai_res["tags"],
-            "title": title[:500],
-            "source_url": article.get("url", ""),
-            "actor1": ai_res.get("actor1"),
-            "actor2": ai_res.get("actor2"),
-            "fatalities": ai_res.get("fatalities", 0),
-            "notes": ai_res.get("notes"),
-        }
-        
-        await upsert_event(event)
-        count += 1
+        # 1. AI-Powered Insight (Swapped to FIRST for better geography)
+        try:
+            ai_res = await classify_event_llm(title)
+            
+            # 2. High-Fidelity Geocoding using AI-extracted entities
+            lat, lon, country, iso3 = await geocode_nominatim_with_fallback(
+                ai_res.get("location"), 
+                ai_res.get("country")
+            )
+            
+            uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
+            event_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            
+            event = {
+                "event_id": f"CIQ-{event_time.strftime('%Y%m%d')}-GLB-{uniq}",
+                "source": "GDELT",
+                "source_reliability": "MEDIUM",
+                "event_time": event_time,
+                "event_date": event_time.date(),
+                "country": country,
+                "country_iso3": iso3,
+                "lat": lat,
+                "lon": lon,
+                "geo_precision": 2 if lat != 0 else 3,
+                "event_type": ai_res.get("event_type", "Other"),
+                "severity": "HIGH" if ai_res.get("severity_score", 0) > 7 else "MEDIUM" if ai_res.get("severity_score", 0) > 4 else "LOW",
+                "severity_score": ai_res.get("severity_score", 3.0),
+                "category": ai_res.get("category", "GENERAL"),
+                "tags": ai_res.get("tags", []),
+                "title": title[:500],
+                "source_url": article.get("url", ""),
+                "actor1": ai_res.get("actor1"),
+                "actor2": ai_res.get("actor2"),
+                "fatalities": ai_res.get("fatalities", 0),
+                "notes": ai_res.get("notes"),
+            }
+            
+            await upsert_event(event)
+            count += 1
+            
+            # 3. Rate Limit Compliance (2s sleep)
+            await asyncio.sleep(2.0)
+            
+        except Exception as e:
+            log.error(f"Error processing GDELT article: {e}")
+            await asyncio.sleep(5)
         
     log.info(f"Successfully processed {count} events from GDELT with AI Intelligence.")

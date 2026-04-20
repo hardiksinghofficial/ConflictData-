@@ -19,6 +19,7 @@ async def set_cache(cache_key: str, data: dict, ttl: int):
         await db.redis.setex(cache_key, ttl, json.dumps(jsonable_encoder(data)))
 
 @router.get("/stats")
+@router.get("/stats/stats")
 async def get_stats(request: Request, country: str = None, days: int = 30):
     cache_key = f"stats:{country}:{days}"
     cached = await check_cache(request, cache_key)

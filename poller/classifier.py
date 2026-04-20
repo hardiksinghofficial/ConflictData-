@@ -83,6 +83,8 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     Return a JSON object with:
     - category: (MILITARY, TERRORIST, MILITANT, CIVIL_UNREST, or GENERAL)
     - event_type: (Armed Clash, Airstrike / Artillery, Terrorist Attack, Arrests / Detainment, Strategic Report, or Other)
+    - location_city: Specific city, town, or province name if mentioned
+    - location_country: The country where this event is taking place
     - actor1: The primary group or entity (e.g. 'IDF', 'Wagner Group', 'Protestors')
     - actor2: The secondary entity or target
     - weapon: Keywords for weapons used (e.g. 'F-16', 'Drone', 'Rocket')
@@ -105,6 +107,8 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
         return {
             "category": res.get("category", "GENERAL").upper(),
             "severity_score": float(res.get("severity_score", 3.0)),
+            "location": res.get("location_city"),
+            "country": res.get("location_country"),
             "tags": list(set([res.get("actor1"), res.get("weapon")] + (res.get("weapon_list", []) if isinstance(res.get("weapon_list"), list) else []))),
             "event_type": res.get("event_type", "Other"),
             "actor1": res.get("actor1"),

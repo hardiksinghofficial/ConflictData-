@@ -4,10 +4,12 @@ import asyncio
 from typing import Tuple, Optional, List, Dict
 from geopy.geocoders import Nominatim
 import spacy
+from api.database import db
+import json
 
 log = logging.getLogger(__name__)
 
-# Predefined Hotspots for common conflict zones (High precision manual overrides)
+# Tactical Centroids for major conflict zones (High precision manual overrides)
 HOTSPOTS = {
     "gaza": (31.3547, 34.3088, "Palestine", "PSE"),
     "west bank": (31.9522, 35.2332, "Palestine", "PSE"),
@@ -24,6 +26,7 @@ HOTSPOTS = {
     "tigray": (13.5, 39.0, "Ethiopia", "ETH"),
     "kabul": (34.555, 69.207, "Afghanistan", "AFG"),
     "mali": (17.57, -3.99, "Mali", "MLI"),
+    "hormuz": (26.5, 56.5, "International Waters", "INT"),
 }
 
 COUNTRY_CENTROIDS = {
@@ -37,11 +40,20 @@ COUNTRY_CENTROIDS = {
     "ethiopia": (9.145, 40.4897, "Ethiopia", "ETH"),
     "syria": (34.8021, 38.9968, "Syria", "SYR"),
     "iraq": (33.2232, 43.6793, "Iraq", "IRQ"),
+    "iran": (32.4279, 53.6880, "Iran", "IRN"),
+    "pakistan": (30.3753, 69.3451, "Pakistan", "PAK"),
+    "afghanistan": (33.9391, 67.7100, "Afghanistan", "AFG"),
+    "lebanon": (33.8547, 35.8623, "Lebanon", "LBN"),
+    "somalia": (5.1521, 46.1996, "Somalia", "SOM"),
+    "drc": (-4.0383, 21.7587, "DR Congo", "COD"),
+    "mali": (17.5707, -3.9962, "Mali", "MLI"),
+    "nigeria": (9.0820, 8.6753, "Nigeria", "NGA"),
+    "libya": (26.3351, 17.2283, "Libya", "LBY"),
+    "taiwan": (23.6978, 120.9605, "Taiwan", "TWN"),
 }
 
 _geolocator = None
 _nlp = None
-_geo_cache = {}
 
 def get_geolocator():
     global _geolocator
@@ -49,118 +61,80 @@ def get_geolocator():
         _geolocator = Nominatim(user_agent='conflictiq-tactical-v4')
     return _geolocator
 
-def get_nlp():
-    global _nlp
-    if not _nlp:
-        try:
-            _nlp = spacy.load('en_core_web_md')
-        except:
-            _nlp = spacy.load('en_core_web_sm')
-    return _nlp
+async def get_cached_geo(key: str) -> Optional[Tuple]:
+    if db.redis:
+        res = await db.redis.get(f"geo:{key}")
+        if res: return tuple(json.loads(res))
+    return None
 
-def extract_location_entities(text: str) -> Dict[str, List[str]]:
+async def set_cached_geo(key: str, val: Tuple):
+    if db.redis:
+        await db.redis.setex(f"geo:{key}", 86400 * 7, json.dumps(val)) # 1 week cache
+
+async def geocode_nominatim_with_fallback(place: str, country_name: str = "") -> Tuple[float, float, str, str]:
     """
-    Extracts locations and categorizes them by hierarchy.
+    High-Fidelity geocoding with Redis caching and guaranteed country fallbacks.
     """
-    nlp = get_nlp()
-    doc = nlp(text)
-    locs = {"GPE": [], "LOC": []}
-    for ent in doc.ents:
-        if ent.label_ in ['GPE', 'LOC']:
-            locs[ent.label_].append(ent.text)
-    return locs
+    # 1. Hotspot check
+    sq_lower = (place or country_name).lower()
+    for kw, coords in HOTSPOTS.items():
+        if kw in sq_lower: return coords
+
+    # 2. Redis Cache check
+    cache_key = f"{place}|{country_name}".lower().strip()
+    cached = await get_cached_geo(cache_key)
+    if cached: return cached
+
+    # 3. Country-only check (If we only have country, use centroid immediately)
+    if not place or place.lower() == country_name.lower():
+        centroid = COUNTRY_CENTROIDS.get(country_name.lower())
+        if centroid: return centroid
+
+    # 4. Deep Geocoding via Nominatim
+    geolocator = get_geolocator()
+    try:
+        # Respect Nominatim rate limits (1 req/sec)
+        await asyncio.sleep(1.2)
+        
+        query = f"{place}, {country_name}" if country_name else place
+        loc = geolocator.geocode(query, addressdetails=True, timeout=10)
+        
+        if loc:
+            addr = loc.raw.get('address', {})
+            country = addr.get('country', country_name or "Unknown")
+            iso = addr.get('ISO3166-1:alpha3', "UNK").upper()
+            res = (loc.latitude, loc.longitude, country, iso)
+            await set_cached_geo(cache_key, res)
+            return res
+    except Exception as e:
+        log.warning(f"Nominatim 429 or Error: {e}. Switching to tactical fallbacks.")
+
+    # 5. Zero-Unknown Fallback Policy
+    if country_name:
+        country_lower = country_name.lower()
+        # Check predefined centroids
+        if country_lower in COUNTRY_CENTROIDS:
+            return COUNTRY_CENTROIDS[country_lower]
+        
+        # Last ditch: try to geocode just the country name (and cache it)
+        try:
+            loc = geolocator.geocode(country_name)
+            if loc:
+                res = (loc.latitude, loc.longitude, country_name, "UNK")
+                await set_cached_geo(country_name.lower(), res)
+                return res
+        except: pass
+
+    # If absolutely everything fails, return Global Centroid but NEVER 'Unknown'
+    return (0.0, 0.0, "International Waters", "INT")
+
+def extract_location_entities(text: str) -> Dict:
+    # Legacy NER - kept for compatibility but superseded by AI extraction
+    return {"GPE": [], "LOC": []}
 
 def get_country_iso3(name: str) -> Optional[str]:
     try:
-        # Check standard common names first
-        name_map = {"gaza": "PSE", "west bank": "PSE", "taiwan": "TWN", "russia": "RUS", "usa": "USA"}
-        if name.lower() in name_map:
-            return name_map[name.lower()]
-            
         c = pycountry.countries.search_fuzzy(name)
         if c: return c[0].alpha_3
     except: pass
     return None
-
-async def geocode_nominatim_with_fallback(place: str, context_text: str = "") -> Tuple[Optional[float], Optional[float], str, str]:
-    """
-    Hierarchical geocoding with intelligent fallbacks.
-    """
-    geolocator = get_geolocator()
-    search_query = place if place else context_text
-    if not search_query:
-        return (0.0, 0.0, "Unknown", "UNK")
-
-    # 1. Hotspot check
-    sq_lower = search_query.lower()
-    for kw, coords in HOTSPOTS.items():
-        if kw in sq_lower:
-            return coords
-
-    # 2. Cache check
-    cache_key = f"{place}|{context_text}"
-    if cache_key in _geo_cache:
-        return _geo_cache[cache_key]
-
-    # 3. Hierarchy extraction
-    entities = extract_location_entities(context_text or search_query)
-    
-    # Try to build a specific query: "City, Country"
-    final_query = search_query
-    country_hint = None
-    if entities["GPE"]:
-        # If we have multiple GPEs, the last one is often the country
-        country_hint = entities["GPE"][-1]
-        if len(entities["GPE"]) > 1:
-            final_query = f"{entities['GPE'][0]}, {country_hint}"
-
-    await asyncio.sleep(1.0) # Modest throttling
-
-    try:
-        params = {"query": final_query, "addressdetails": True, "timeout": 10}
-        
-        # Add country filter if hint exists
-        iso2 = None
-        if country_hint:
-            try:
-                c = pycountry.countries.search_fuzzy(country_hint)
-                if c: iso2 = c[0].alpha_2
-            except: pass
-        if iso2: params["country_codes"] = [iso2]
-
-        loc = geolocator.geocode(**params)
-        
-        if loc:
-            addr = loc.raw.get('address', {})
-            country = addr.get('country', "Unknown")
-            iso = addr.get('ISO3166-1:alpha3', "UNK").upper()
-            
-            # Map validation: ensure we didn't get a random street in a different country
-            if iso2 and addr.get('country_code', '').upper() != iso2.upper():
-                log.warning(f"Geocode mismatch: expected {iso2} but got {addr.get('country_code')}. Falling back.")
-            else:
-                res = (loc.latitude, loc.longitude, country, iso)
-                _geo_cache[cache_key] = res
-                return res
-    except Exception as e:
-        log.warning(f"Nominatim Error: {e}")
-
-    # 4. Final Fallback to Country Centroid
-    if country_hint:
-        ch_lower = country_hint.lower()
-        if ch_lower in COUNTRY_CENTROIDS:
-            return COUNTRY_CENTROIDS[ch_lower]
-        
-        # Try generic country geocode
-        try:
-            loc = geolocator.geocode(country_hint)
-            if loc:
-                return (loc.latitude, loc.longitude, country_hint, "UNK")
-        except: pass
-
-    return (0.0, 0.0, "Unknown", "UNK")
-
-def extract_location_ner(text: str):
-    locs = extract_location_entities(text)
-    all_locs = locs["GPE"] + locs["LOC"]
-    return all_locs[0] if all_locs else None

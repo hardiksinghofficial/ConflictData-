@@ -28,8 +28,8 @@ async def run_poll_gdelt():
 async def main():
     log.info("Starting ConflictIQ Ingestion Poller...")
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(run_poll_rss, 'interval', minutes=2, max_instances=1)
-    scheduler.add_job(run_poll_gdelt, 'interval', minutes=5, max_instances=1)
+    scheduler.add_job(run_poll_rss, 'interval', minutes=15, max_instances=1)
+    scheduler.add_job(run_poll_gdelt, 'interval', minutes=30, max_instances=1)
     scheduler.add_job(prune_old_events, 'cron', day_of_week='sun', hour=2)
     scheduler.start()
 

@@ -200,6 +200,78 @@ const TacticalMap = ({ events, layerData, selectedEvent, layers }) => {
           </Marker>
         ))}
 
+        {/* --- STRATEGIC CONFLICT THEATERS (THE BIG RED ZONES) --- */}
+        {layers.theaters.active && (layerData.theaters || []).map((t, i) => {
+          // Color coding based on intensity and stability
+          const isCritical = t.stability_rating < 40 || t.intensity === 'CRISIS';
+          const zoneColor = isCritical ? '#f43f5e' : t.stability_rating < 70 ? '#f59e0b' : '#a855f7';
+          const pulseClass = isCritical ? 'pulse-heavy' : 'pulse-soft';
+          
+          return (
+            <React.Fragment key={`theater-${t.conflict_id}`}>
+              {/* Core Pulse */}
+              <Circle 
+                center={[t.center_lat, t.center_lon]}
+                radius={Math.max(50000, (t.spread_km || 150) * 1000)}
+                pathOptions={{ 
+                  color: zoneColor, 
+                  fillColor: zoneColor, 
+                  fillOpacity: layers.theaters.opacity * 0.2,
+                  weight: 1,
+                  dashArray: '10, 10'
+                }}
+                className={pulseClass}
+              >
+                <Popup className="tactical-popup">
+                  <div style={{ padding: '10px', minWidth: '220px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                       <div style={{ color: zoneColor, fontWeight: 900, fontSize: '10px', letterSpacing: '1.5px' }}>STRATEGIC THEATER</div>
+                       <div style={{ background: zoneColor, color: 'black', padding: '2px 6px', fontSize: '10px', fontWeight: 900, borderRadius: '4px' }}>
+                         {t.intensity}
+                       </div>
+                    </div>
+                    <div style={{ fontSize: '18px', fontWeight: 900, color: 'white', marginBottom: '4px' }}>{t.name}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginBottom: '15px' }}>Sector spread: {Math.round(t.spread_km)}km</div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                       <div>
+                          <div style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-dim)' }}>STABILITY</div>
+                          <div style={{ fontSize: '14px', fontWeight: 900, color: zoneColor }}>{Math.round(t.stability_rating)}%</div>
+                       </div>
+                       <div>
+                          <div style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-dim)' }}>ENGAGEMENTS</div>
+                          <div style={{ fontSize: '14px', fontWeight: 900, color: 'white' }}>{t.total_events}</div>
+                       </div>
+                       <div style={{ gridColumn: 'span 2' }}>
+                          <div style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-dim)' }}>PRIMARY ACTOR</div>
+                          <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--accent-cyan)' }}>{t.dominant_actor || 'UNKNOWN'}</div>
+                       </div>
+                    </div>
+
+                    <div style={{ marginTop: '12px', display: 'flex', gap: '10px', alignItems: 'center', opacity: 0.5 }}>
+                       <Activity size={12} className="pulse-dot" />
+                       <span style={{ fontSize: '9px', fontWeight: 800 }}>ONGOING KINETIC SIGNATURES DETECTED</span>
+                    </div>
+                  </div>
+                </Popup>
+              </Circle>
+              {/* Outer Glow Ring */}
+              <Circle 
+                center={[t.center_lat, t.center_lon]}
+                radius={Math.max(50000, (t.spread_km || 150) * 1000) * 1.5}
+                pathOptions={{ 
+                  color: zoneColor, 
+                  fill: false,
+                  weight: 0.5,
+                  opacity: 0.3,
+                  dashArray: '5, 20'
+                }}
+                className={pulseClass + '-slow'}
+              />
+            </React.Fragment>
+          );
+        })}
+
         <MapController selectedEvent={selectedEvent} />
       </MapContainer>
 

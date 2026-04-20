@@ -167,3 +167,51 @@ async def get_active_frontlines():
     async with db.pool.acquire() as conn:
         rows = await conn.fetch(query)
     return [dict(r) for r in rows]
+
+async def get_strategic_theaters():
+    """
+    Groups events into high-level Theaters of Conflict.
+    Calculates Stability Rating (0-100) and current tactical centroids.
+    """
+    query = """
+    WITH theater_centroids AS (
+        SELECT 
+            conflict_id,
+            AVG(lat) as center_lat,
+            AVG(lon) as center_lon,
+            MAX(severity_score) as max_severity,
+            SUM(fatalities) as total_fatalities,
+            mode() WITHIN GROUP (ORDER BY actor1) as dominant_actor,
+            mode() WITHIN GROUP (ORDER BY weapon) as primary_weapon,
+            ST_Distance(ST_MakePoint(MIN(lon), MIN(lat)), ST_MakePoint(MAX(lon), MAX(lat))) * 111 as spread_km
+        FROM conflict_events
+        WHERE event_time >= NOW() - INTERVAL '7 days'
+          AND conflict_id IS NOT NULL
+        GROUP BY conflict_id
+    )
+    SELECT 
+        ac.conflict_id,
+        ac.name,
+        ac.intensity,
+        tc.center_lat,
+        tc.center_lon,
+        tc.max_severity,
+        tc.total_fatalities,
+        tc.dominant_actor,
+        tc.primary_weapon,
+        tc.spread_km,
+        ac.total_events,
+        -- Stability Index Calculation (0-100: Higher is better)
+        GREATEST(0, LEAST(100, 
+            100 - (ac.total_events * 2.5) - (tc.max_severity * 5) - (tc.total_fatalities * 0.5)
+        )) as stability_rating
+    FROM active_conflicts ac
+    JOIN theater_centroids tc ON ac.conflict_id = tc.conflict_id
+    WHERE ac.status = 'ACTIVE'
+      AND ac.last_event_at >= NOW() - INTERVAL '4 days'
+    ORDER BY tc.max_severity DESC
+    """
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch(query)
+        
+    return [dict(r) for r in rows]

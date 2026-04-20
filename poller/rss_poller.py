@@ -57,29 +57,29 @@ async def poll_rss():
                 title = entry.get('title','').lower()
                 summary = entry.get('summary', '').lower()
                 
-                # Pre-filter to save LLM tokens
+                # Pre-filter to save LLM tokens (Only process likely conflict news)
                 if not any(kw in title or kw in summary for kw in CONFLICT_KEYWORDS):
                     continue
                 
-                text_to_examine = title + ". " + summary
-                location = extract_location_ner(text_to_examine)
-                
-                # Default to center of world/unknown
-                lat, lon, country, iso3 = (0.0, 0.0, "Unknown", "UNK")
-                
-                if location or title:
-                    lat_res, lon_res, country_res, iso3_res = await geocode_nominatim_with_fallback(location, title)
-                    if lat_res is not None:
-                        lat, lon, country, iso3 = lat_res, lon_res, country_res, iso3_res
-                
-                # AI-Powered Insight
+                # 1. AI-Powered Insight (Swapped to FIRST so we get high-fidelity location)
                 ai_res = await classify_event_llm(entry.get('title',''), entry.get('summary',''))
                 
-                event = build_event(entry, lat, lon, country, iso3, ai_res, source='RSS')
+                # 2. High-Fidelity Geocoding using AI-extracted entities
+                # This significantly reduces 'Unknown' results
+                lat, lon, country, iso3 = await geocode_nominatim_with_fallback(
+                    ai_res.get("location"), 
+                    ai_res.get("country")
+                )
                 
+                event = build_event(entry, lat, lon, country, iso3, ai_res, source='RSS')
                 await upsert_event(event)
                 count += 1
+                
+                # 3. Throttling: respect Nominatim "1 req/sec" + AI rate limits
+                await asyncio.sleep(2.0)
+                
         except Exception as e:
             log.error(f"Error parsing RSS {url}: {e}")
+            await asyncio.sleep(5) # Cooldown on failure
 
     log.info(f"Successfully processed {count} events from RSS with AI Intelligence.")

@@ -12,7 +12,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ total_events: 0, active_wars: 0, high_severity: 0 });
   const [events, setEvents] = useState([]);
-  const [layerData, setLayerData] = useState({ monitor: [], frontlines: [], hotspots: [], trends: [] });
+  const [layerData, setLayerData] = useState({ monitor: [], frontlines: [], hotspots: [], trends: [], theaters: [] });
   const [activePanels, setActivePanels] = useState({ layers: false, feed: true });
   const [flashAlert, setFlashAlert] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -27,6 +27,7 @@ const Dashboard = () => {
   // Professional Intelligence Layers State
   const [layers, setLayers] = useState({
     kinetic: { active: true, opacity: 1, name: 'Live Engagement Feed', icon: <Target size={14}/>, group: 'tactical', count: 0 },
+    theaters: { active: true, opacity: 0.6, name: 'Strategic Conflict Theaters', icon: <Globe size={14}/>, group: 'strategic', count: 0 },
     priority: { active: true, opacity: 1, name: 'Strategic Monitor', icon: <Shield size={14}/>, group: 'tactical', count: 0 },
     frontlines: { active: false, opacity: 0.3, name: 'Combat Frontlines', icon: <Activity size={14}/>, group: 'strategic', count: 0 },
     hotspots: { active: true, opacity: 0.15, name: 'Sustained Hotspots', icon: <Flame size={14}/>, group: 'strategic', count: 0 },
@@ -58,14 +59,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [statsRes, eventsRes, monitorRes, frontRes, hotRes, trendRes, sitrepRes] = await Promise.all([
+        const [statsRes, eventsRes, monitorRes, frontRes, hotRes, trendRes, sitrepRes, theaterRes] = await Promise.all([
           fetch(`${API_BASE}/api/v1/stats/stats`).then(r => r.json()),
           fetch(`${API_BASE}/api/v1/conflicts/ongoing?limit=100`).then(r => r.json()),
           fetch(`${API_BASE}/api/v1/intel/monitor`).then(r => r.json()),
           fetch(`${API_BASE}/api/v1/intel/frontlines`).then(r => r.json()),
           fetch(`${API_BASE}/api/v1/intel/hotspots`).then(r => r.json()),
           fetch(`${API_BASE}/api/v1/intel/trends`).then(r => r.json()),
-          fetch(`${API_BASE}/api/v1/intel/sitrep`).then(r => r.json())
+          fetch(`${API_BASE}/api/v1/intel/sitrep`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/theaters`).then(r => r.json())
         ]);
 
         const ongoingEvents = eventsRes.data || [];
@@ -80,13 +82,15 @@ const Dashboard = () => {
           monitor: monitorRes || [], 
           frontlines: frontRes || [], 
           hotspots: hotRes || [], 
-          trends: trendRes || [] 
+          trends: trendRes || [],
+          theaters: theaterRes || []
         });
 
         // Sync Layer Counts
         setLayers(prev => ({
           ...prev,
           kinetic: { ...prev.kinetic, count: ongoingEvents.length },
+          theaters: { ...prev.theaters, count: (theaterRes || []).length },
           priority: { ...prev.priority, count: (monitorRes || []).length },
           frontlines: { ...prev.frontlines, count: (frontRes || []).length },
           hotspots: { ...prev.hotspots, count: (hotRes || []).length },
