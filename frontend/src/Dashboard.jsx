@@ -1,83 +1,237 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Radio, Activity, Globe, Zap, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Shield, Radio, Globe, Zap, AlertTriangle, Menu, FileText, Sliders, Target, Activity, Flame, Wifi, BarChart3, Users, ZapOff } from 'lucide-react';
 import TacticalMap from './components/TacticalMap';
-import AIAnalyst from './components/AIAnalyst';
-import ConflictRollup from './components/ConflictRollup';
+import TacticalFeed from './components/TacticalFeed';
 import CombatTicker from './components/CombatTicker';
+import LayerManager from './components/LayerManager';
+import API_BASE from './config';
+import useTacticalWS from './hooks/useTacticalWS';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({ total_events: 0, active_wars: 0, high_severity: 0 });
+  const [events, setEvents] = useState([]);
+  const [layerData, setLayerData] = useState({ monitor: [], frontlines: [], hotspots: [], trends: [] });
+  const [activePanels, setActivePanels] = useState({ layers: false, feed: true });
+  const [flashAlert, setFlashAlert] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [zuluTime, setZuluTime] = useState(new Date().toUTCString());
+
+  // ZULU Clock Interval
+  useEffect(() => {
+    const timer = setInterval(() => setZuluTime(new Date().toUTCString()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Professional Intelligence Layers State
+  const [layers, setLayers] = useState({
+    kinetic: { active: true, opacity: 1, name: 'Live Engagement Feed', icon: <Target size={14}/>, group: 'tactical', count: 0 },
+    priority: { active: true, opacity: 1, name: 'Strategic Monitor', icon: <Shield size={14}/>, group: 'tactical', count: 0 },
+    frontlines: { active: false, opacity: 0.3, name: 'Combat Frontlines', icon: <Activity size={14}/>, group: 'strategic', count: 0 },
+    hotspots: { active: true, opacity: 0.15, name: 'Sustained Hotspots', icon: <Flame size={14}/>, group: 'strategic', count: 0 },
+    surges: { active: true, opacity: 0.4, name: 'Surge Vectors', icon: <BarChart3 size={14}/>, group: 'strategic', count: 0 },
+    civilians: { active: false, opacity: 0.8, name: 'Civilian Risk', icon: <Users size={14}/>, group: 'surveillance', count: 0 },
+    satellite: { active: false, opacity: 1, name: 'Multispectral Ops', icon: <Globe size={14}/>, group: 'surveillance', count: 0 }
+  });
+
+  const updateLayer = (key, updates) => {
+    setLayers(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
+  };
+
+  // Real-time Intelligence Hook
+  const { status: wsStatus } = useTacticalWS((newEvent) => {
+    setEvents(prev => [newEvent, ...prev.slice(0, 99)]);
+    if (newEvent.severity_score >= 7.5 || newEvent.priority) {
+      setFlashAlert(newEvent);
+      setTimeout(() => setFlashAlert(null), 8000);
+    }
+    setStats(prev => ({ 
+      ...prev, 
+      total_events: prev.total_events + 1,
+      high_severity: newEvent.severity_score >= 8.5 ? prev.high_severity + 1 : prev.high_severity
+    }));
+    // Update live count for kinetic layer
+    updateLayer('kinetic', { count: events.length + 1 });
+  });
 
   useEffect(() => {
-    // Initial fetch for system stats
-    const fetchStats = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await fetch('https://hardik1231312-conflictdata.hf.space/api/v1/stats/stats');
-        const data = await res.json();
-        setStats({
-          total_events: data.total_events || 0,
-          active_wars: 0, // Will be updated by conflict hub
-          high_severity: data.by_severity?.HIGH || 0
+        const [statsRes, eventsRes, monitorRes, frontRes, hotRes, trendRes, sitrepRes] = await Promise.all([
+          fetch(`${API_BASE}/api/v1/stats/stats`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/conflicts/ongoing?limit=100`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/monitor`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/frontlines`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/hotspots`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/trends`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/intel/sitrep`).then(r => r.json())
+        ]);
+
+        const ongoingEvents = eventsRes.data || [];
+        setEvents(ongoingEvents);
+        setStats({ 
+          total_events: statsRes.total_events || 0, 
+          active_wars: 0, 
+          high_severity: statsRes.by_severity?.HIGH || 0,
+          sitrep: sitrepRes 
         });
+        setLayerData({ 
+          monitor: monitorRes || [], 
+          frontlines: frontRes || [], 
+          hotspots: hotRes || [], 
+          trends: trendRes || [] 
+        });
+
+        // Sync Layer Counts
+        setLayers(prev => ({
+          ...prev,
+          kinetic: { ...prev.kinetic, count: ongoingEvents.length },
+          priority: { ...prev.priority, count: (monitorRes || []).length },
+          frontlines: { ...prev.frontlines, count: (frontRes || []).length },
+          hotspots: { ...prev.hotspots, count: (hotRes || []).length },
+          surges: { ...prev.surges, count: (trendRes || []).length },
+          civilians: { ...prev.civilians, count: ongoingEvents.filter(e => e.fatalities_civilians > 0).length }
+        }));
+
       } catch (err) {
-        console.error("Dashboard Stats Error:", err);
+        console.error("Dashboard Init Error:", err);
       }
     };
-    fetchStats();
-    const interval = setInterval(fetchStats, 60000);
-    return () => clearInterval(interval);
+    fetchInitialData();
   }, []);
+
+  const togglePanel = (panel) => setActivePanels(prev => ({ ...prev, [panel]: !prev[panel] }));
+  const handleSelectEvent = (event) => { setSelectedEvent(event); setTimeout(() => setSelectedEvent(null), 2500); };
 
   return (
     <div className="war-room-layout">
-      {/* Header Overlay */}
-      <header className="glass-panel" style={{ gridColumn: '1 / span 3', display: 'flex', alignItems: 'center', padding: '0 20px', justifyContent: 'space-between', zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <Shield color="var(--accent-red)" size={32} />
-          <h1 style={{ fontSize: '24px', fontWeight: 800, letterSpacing: '1px' }}>CONFLICT<span style={{ color: 'var(--accent-red)' }}>IQ</span></h1>
-          <div className="glass-panel" style={{ padding: '4px 12px', fontSize: '12px', color: 'var(--accent-green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', border: 'none' }}>
-            <div className="pulse-red" style={{ background: 'var(--accent-green)', width: '8px', height: '8px' }}></div>
-            SYSTEM OPERATIONAL
+      {activePanels.layers && (
+        <LayerManager 
+          layers={layers} 
+          updateLayer={updateLayer} 
+          onClose={() => togglePanel('layers')} 
+        />
+      )}
+
+      {/* HEADER SECTION */}
+      <header className="glass-panel" style={{ height: '70px', display: 'flex', alignItems: 'center', padding: '0 30px', justifyContent: 'space-between', zIndex: 110, borderBottom: '1px solid var(--border-glass)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
+          <div style={{ position: 'relative' }}>
+             <Shield color="var(--accent-red)" size={32} />
+             <div style={{ position: 'absolute', top: -5, right: -5, width: 8, height: 8, background: 'var(--accent-green)', borderRadius: '50%', boxShadow: '0 0 10px var(--accent-green)' }}></div>
+          </div>
+          <div>
+            <h1 style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '3px', margin: 0 }}>CONFLICT<span style={{ color: 'var(--accent-red)' }}>IQ</span></h1>
+            <div style={{ fontSize: '9px', fontWeight: 700, opacity: 0.5, letterSpacing: '1px' }}>GLOBAL MONITORING // LEVEL-4 STRATEGIC</div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '30px' }}>
-          <StatItem icon={<Globe size={18}/>} label="GLOBAL EVENTS" value={stats.total_events} />
-          <StatItem icon={<AlertTriangle size={18} color="var(--accent-red)"/>} label="HIGH INTENSITY" value={stats.high_severity} />
-          <StatItem icon={<Zap size={18} color="var(--accent-amber)"/>} label="ACTIVE FRONTS" value="LIVE" />
+        <div className="nav-command-group">
+          <button className={`nav-command-btn ${activePanels.layers ? 'active' : ''}`} onClick={() => togglePanel('layers')}>
+            <Sliders size={14} /> LAYERS
+          </button>
+          <button className="nav-command-btn" onClick={() => navigate('/sitrep')}>
+            <Zap size={14} /> SITREP
+          </button>
+          <button className={`nav-command-btn ${activePanels.feed ? 'active' : ''}`} onClick={() => togglePanel('feed')}>
+            <Radio size={14} /> NEWS FEED
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+          {/* NEW: STRATEGIC THREAT LEVEL INDICATOR */}
+          {stats.sitrep && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ textAlign: 'right' }}>
+                   <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-secondary)' }}>STRATEGIC THREAT LEVEL</div>
+                   <div style={{ fontSize: '12px', fontWeight: 900, color: stats.sitrep.intensity === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-amber)', letterSpacing: '1px' }}>
+                      {stats.sitrep.intensity || 'ANALYZING...'}
+                   </div>
+                </div>
+                <div style={{ 
+                  width: '32px', height: '32px', borderRadius: '4px', 
+                  background: stats.sitrep.intensity === 'HIGH' ? 'rgba(244, 63, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                  border: `1px solid ${stats.sitrep.intensity === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-amber)'}`,
+                  display: 'flex', alignItems: 'center', justifyCenter: 'center',
+                  animation: stats.sitrep.intensity === 'HIGH' ? 'pulse-red 2s infinite' : 'none'
+                }}>
+                  <AlertTriangle size={18} color={stats.sitrep.intensity === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-amber)'} style={{ margin: 'auto' }} />
+                </div>
+            </div>
+          )}
+
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+             <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-secondary)' }}>ZULU TIME</div>
+             <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{zuluTime.split(' ')[4]}</div>
+          </div>
+          <div style={{ width: '1px', height: '20px', background: 'var(--border-glass)' }}></div>
+          <div style={{ display: 'flex', gap: '30px' }}>
+            <StatItem label="COMMS" value={wsStatus} color={wsStatus === 'ONLINE' ? 'var(--accent-green)' : 'var(--accent-red)'} pulse={wsStatus === 'ONLINE'} />
+            <StatItem label="INTEL" value={stats.total_events} />
+            <StatItem label="KINETIC" value={stats.high_severity} color="var(--accent-red)" />
+          </div>
         </div>
       </header>
 
-      {/* Main Tactical Map */}
-      <main className="map-container glass-panel">
+      {/* MAIN CONTENT AREA */}
+      <main className="main-content">
         <div className="scanline"></div>
-        <TacticalMap />
+        <section className="map-viewport">
+          <TacticalMap 
+            events={events} 
+            layerData={layerData} 
+            selectedEvent={selectedEvent} 
+            layers={layers} 
+          />
+        </section>
+
+        <div className={`sidebar-feed ${!activePanels.feed ? 'collapsed' : ''}`}>
+          <TacticalFeed 
+            events={events} 
+            selectedId={selectedEvent?.event_id}
+            onSelectEvent={handleSelectEvent} 
+          />
+        </div>
       </main>
 
-      {/* Intelligence Sidebar */}
-      <aside style={{ gridColumn: '1', gridRow: '2' }}>
-        <AIAnalyst />
-      </aside>
+      {/* FLASH ALERT */}
+      {flashAlert && (
+        <div className="glass-panel" style={{ 
+          position: 'fixed', top: '85px', right: activePanels.feed ? '435px' : '20px', 
+          zIndex: 1000, padding: '20px', 
+          borderLeft: '5px solid var(--accent-red)', animation: 'slide-in 0.5s ease-out', width: '340px',
+          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--accent-red)', fontWeight: 800, fontSize: '11px', letterSpacing: '1px' }}>
+            <AlertTriangle size={14} /> TACTICAL FLASH
+          </div>
+          <div style={{ fontWeight: 800, fontSize: '15px', marginTop: '10px', lineHeight: '1.3' }}>{flashAlert.title}</div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>{flashAlert.city}, {flashAlert.country}</div>
+        </div>
+      )}
 
-      {/* Conflict Hub Sidebar */}
-      <aside style={{ gridColumn: '3', gridRow: '2' }}>
-        <ConflictRollup />
-      </aside>
-
-      {/* Bottom Ticker */}
-      <footer className="glass-panel" style={{ gridColumn: '1 / span 3', gridRow: '3', overflow: 'hidden' }}>
-        <CombatTicker />
+      {/* FOOTER */}
+      <footer className="footer-ticker">
+        <CombatTicker events={events} />
       </footer>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes slide-in { from { transform: translateX(120%); } to { transform: translateX(0); } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .pulse-dot { animation: blink 2s infinite; }
+      `}} />
     </div>
   );
 };
 
-const StatItem = ({ icon, label, value }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-    <div style={{ color: 'var(--text-secondary)' }}>{icon}</div>
-    <div>
-      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: '16px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{value}</div>
+const StatItem = ({ label, value, color, pulse }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+    <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>{label}</div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+       {pulse && <div className="pulse-dot" style={{ width: '4px', height: '4px', borderRadius: '50%', background: color }}></div>}
+       <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-mono)', color: color || 'var(--text-primary)' }}>{value}</div>
     </div>
   </div>
 );

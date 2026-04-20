@@ -1,9 +1,11 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from api.database import connect_db, disconnect_db, db
 from api.routes import conflicts, stats, websocket, intel, intel_hub, ai_analyst
+import os
 
 log = logging.getLogger("api.main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -39,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount API Routers
 app.include_router(conflicts.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
 app.include_router(websocket.router, prefix="/api/v1")
@@ -46,9 +49,33 @@ app.include_router(intel.router, prefix="/api/v1")
 app.include_router(intel_hub.router, prefix="/api/v1")
 app.include_router(ai_analyst.router, prefix="/api/v1")
 
-@app.get("/", tags=["Root"])
-async def root():
-    return {"service": "ConflictIQ API", "version": "2.0", "status": "running"}
+# --- Frontend Serving Layer ---
+# Check if frontend/dist exists
+front_dist = os.path.join(os.getcwd(), "frontend", "dist")
+
+if os.path.exists(front_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(front_dist, "assets")), name="assets")
+    
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(os.path.join(front_dist, "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def catch_all(full_path: str):
+        # Only serve index for non-API routes
+        if full_path.startswith("api/v1") or full_path.startswith("health") or full_path.startswith("docs"):
+            return None # FastAPI will handle via routing
+        
+        # Check if it's a static file that exists
+        file_path = os.path.join(front_dist, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        return FileResponse(os.path.join(front_dist, "index.html"))
+else:
+    @app.get("/", tags=["Root"])
+    async def root():
+        return {"service": "ConflictIQ API", "version": "2.0", "status": "running", "frontend": "not_found"}
 
 @app.get("/health", tags=["Health"])
 @app.get("/api/v1/health", tags=["Health"])

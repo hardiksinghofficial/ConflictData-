@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Target, TrendingUp, Clock } from 'lucide-react';
+import API_BASE from '../config';
 
 const ConflictRollup = () => {
   const [conflicts, setConflicts] = useState([]);
@@ -7,7 +8,7 @@ const ConflictRollup = () => {
   useEffect(() => {
     const fetchConflicts = async () => {
       try {
-        const res = await fetch('https://hardik1231312-conflictdata.hf.space/api/v1/active-conflicts');
+        const res = await fetch(`${API_BASE}/api/v1/active-conflicts`);
         const data = await res.json();
         setConflicts(data || []);
       } catch (err) {
@@ -35,7 +36,6 @@ const ConflictRollup = () => {
             </div>
             <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '12px' }}>{c.name}</div>
             
-            {/* Intensity Bar */}
             <div style={{ background: '#1e293b', height: '4px', borderRadius: '2px', position: 'relative', overflow: 'hidden', marginBottom: '8px' }}>
               <div style={{ 
                 background: c.intensity === 'WAR' ? 'var(--accent-red)' : 'var(--accent-amber)', 
@@ -55,7 +55,6 @@ const ConflictRollup = () => {
             </div>
           </div>
         ))}
-        {conflicts.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '20px', fontSize: '12px' }}>NO ACTIVE WARS DETECTED</div>}
       </div>
     </div>
   );

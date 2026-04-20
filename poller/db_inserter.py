@@ -1,6 +1,7 @@
 import os
 import asyncpg
 import logging
+import json
 from typing import Dict, Any, Optional
 import ssl
 from poller.conflict_tracker import identify_or_create_conflict
@@ -102,9 +103,28 @@ async def upsert_event(event: Dict[str, Any]):
         
         try:
             await conn.execute(query, *values)
-            log.debug(f"Upserted event {event['event_id']}")
+            
+            # Real-time Broadcast: Notify the WebSocket listener with Enriched Intel
+            payload = {
+                "event_id": event["event_id"],
+                "title": event["title"],
+                "city": event.get("city"),
+                "country": event["country"],
+                "lat": event["lat"],
+                "lon": event["lon"],
+                "severity_score": event.get("severity_score", 0.0),
+                "event_type": event.get("event_type"),
+                "category": event.get("category", "GENERAL"),
+                "event_time": str(event["event_time"]),
+                "actor1": event.get("actor1"),
+                "weapon": event.get("weapon"),
+                "fatalities": event.get("fatalities", 0),
+                "notes": event.get("notes", "")
+            }
+            await conn.execute(f"SELECT pg_notify('new_conflict_event', $1)", json.dumps(payload))
+            log.debug(f"Upserted and Enriched Notified event {event['event_id']}")
         except Exception as e:
-            log.error(f"Failed to upsert event {event['event_id']}: {e}")
+            log.error(f"Failed to upsert/notify event {event['event_id']}: {e}")
 
 async def prune_old_events():
     pool = await get_pool()
