@@ -49,16 +49,21 @@ EVENT_TYPES_MAP = {
 }
 
 # --- MULTI-ENGINE CLIENT SETUP ---
-_groq_client = None
+_groq_keys = [k.strip() for k in os.getenv("GROQ_API_KEYS", os.getenv("GROQ_API_KEY", "")).split(",") if k.strip()]
+_groq_clients = [AsyncGroq(api_key=k) for k in _groq_keys]
+_current_groq_index = 0
+
 _hf_client = None
 _gemini_configured = False
 
 def get_groq_client():
-    global _groq_client
-    if not _groq_client:
-        api_key = os.getenv("GROQ_API_KEY")
-        if api_key: _groq_client = AsyncGroq(api_key=api_key)
-    return _groq_client
+    global _current_groq_index
+    if not _groq_clients:
+        return None
+    client = _groq_clients[_current_groq_index]
+    # Rotate for next call
+    _current_groq_index = (_current_groq_index + 1) % len(_groq_clients)
+    return client
 
 def get_hf_client():
     global _hf_client
@@ -79,22 +84,29 @@ def configure_gemini():
 # --- CLASSIFICATION ENGINES ---
 
 async def classify_with_groq(prompt: str) -> Optional[Dict]:
-    client = get_groq_client()
-    if not client: return None
-    try:
-        completion = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a professional conflict intelligence analyst. Output ONLY valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        return json.loads(completion.choices[0].message.content)
-    except Exception as e:
-        if "429" in str(e): log.warning("Groq Rate Limited. Trying fallback...")
-        else: log.error(f"Groq Engine Error: {e}")
-        return None
+    if not _groq_clients: return None
+    
+    # Try all available keys in round-robin fashion
+    for _ in range(len(_groq_clients)):
+        client = get_groq_client()
+        try:
+            completion = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "You are a professional conflict intelligence analyst. Output ONLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(completion.choices[0].message.content)
+        except Exception as e:
+            if "429" in str(e):
+                log.warning(f"Groq Key limited. Rotating to next...")
+                continue # Try next key
+            else:
+                log.error(f"Groq Engine Error: {e}")
+                return None
+    return None
 
 async def classify_with_gemini(prompt: str) -> Optional[Dict]:
     if not configure_gemini(): return None
