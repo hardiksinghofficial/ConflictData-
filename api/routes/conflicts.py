@@ -83,6 +83,7 @@ async def get_conflicts(
         # New Precision Metadata
         d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
         d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        d["ai_analysis"] = d.get("ai_analysis")
         if d.get("geom"): del d["geom"]
 
     response = {
@@ -121,6 +122,7 @@ async def get_recent_conflicts(request: Request, days: int = 7, limit: int = 100
         d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
         d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
         d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        d["ai_analysis"] = d.get("ai_analysis")
         if d.get("geom"): del d["geom"]
 
     response = {
@@ -281,6 +283,7 @@ async def get_conflict_detail(event_id: str):
     d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
     d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
     d["is_approximate"] = d.get("geo_precision", 3) >= 3
+    d["ai_analysis"] = d.get("ai_analysis")
     if d.get("geom"): del d["geom"]
 
     return {

@@ -5,6 +5,7 @@ import TacticalMap from './components/TacticalMap';
 import TacticalFeed from './components/TacticalFeed';
 import CombatTicker from './components/CombatTicker';
 import LayerManager from './components/LayerManager';
+import IncidentIntelligenceCard from './components/IncidentIntelligenceCard';
 import API_BASE from './config';
 import useTacticalWS from './hooks/useTacticalWS';
 
@@ -16,6 +17,7 @@ const Dashboard = () => {
   const [activePanels, setActivePanels] = useState({ layers: false, feed: true });
   const [flashAlert, setFlashAlert] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [activeIntelEvent, setActiveIntelEvent] = useState(null);
   const [zuluTime, setZuluTime] = useState(new Date().toUTCString());
 
   // ZULU Clock Interval
@@ -153,9 +155,6 @@ const Dashboard = () => {
           <button className={`nav-command-btn ${activePanels.layers ? 'active' : ''}`} onClick={() => togglePanel('layers')}>
             <Sliders size={14} /> LAYERS
           </button>
-          <button className="nav-command-btn" onClick={() => navigate('/sitrep')}>
-            <Zap size={14} /> SITREP
-          </button>
           <button className={`nav-command-btn ${activePanels.feed ? 'active' : ''}`} onClick={() => togglePanel('feed')}>
             <Radio size={14} /> NEWS FEED
           </button>
@@ -204,9 +203,21 @@ const Dashboard = () => {
             events={events} 
             layerData={layerData} 
             selectedEvent={selectedEvent} 
+            onDeepAnalyze={(ev) => setActiveIntelEvent(ev)}
             layers={layers} 
           />
         </section>
+
+        {activeIntelEvent && (
+          <IncidentIntelligenceCard 
+            event={activeIntelEvent} 
+            onClose={() => setActiveIntelEvent(null)}
+            onRequestLiveAnalysis={(ev) => {
+               // Optional: trigger manual live re-analysis if ever needed
+               console.log("Live analysis requested for", ev.event_id);
+            }}
+          />
+        )}
 
         <div className={`sidebar-feed ${!activePanels.feed ? 'collapsed' : ''}`}>
           <TacticalFeed 

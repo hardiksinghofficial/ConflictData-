@@ -171,6 +171,7 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     - fatalities: Estimated count if mentioned, else 0
     - severity_score: 0 to 10 based on tactical impact
     - summary_short: 1 sentence tactical summary
+    - deep_analysis: 2-3 paragraph professional intelligence SITREP. Include likely strategic intent, immediate escalation risks, and any historical context regarding the actors or location. Use a sober, analytical tone.
     """
 
     # ENGINE TIER 1: GROQ
@@ -215,6 +216,7 @@ def parse_llm_res(res: Dict, provider: str) -> Dict[str, Any]:
         "actor2": res.get("actor2"),
         "fatalities": int(res.get("fatalities", 0)),
         "notes": res.get("summary_short", ""),
+        "ai_analysis": res.get("deep_analysis", ""),
         "ai_classified": True,
         "provider": provider
     }

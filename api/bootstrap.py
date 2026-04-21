@@ -111,9 +111,11 @@ async def bootstrap_db():
                 ADD COLUMN IF NOT EXISTS geocode_provider VARCHAR(40),
                 ADD COLUMN IF NOT EXISTS location_raw TEXT,
                 ADD COLUMN IF NOT EXISTS location_admin1 VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS geo_validation_flags TEXT[];
+                ADD COLUMN IF NOT EXISTS geo_validation_flags TEXT[],
+                ADD COLUMN IF NOT EXISTS ai_analysis TEXT;
                 
                 CREATE INDEX IF NOT EXISTS idx_geo_confidence ON conflict_events(geo_confidence);
+                CREATE INDEX IF NOT EXISTS idx_ai_analysis ON conflict_events USING GIN(to_tsvector('english', COALESCE(ai_analysis, '')));
             """)
             
             log.info("[Bootstrap] Database schema validation and initialization complete.")

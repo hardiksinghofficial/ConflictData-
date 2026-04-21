@@ -7,7 +7,6 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/sitrep" element={<AnalyticsPage />} />
       </Routes>
     </Router>
   );

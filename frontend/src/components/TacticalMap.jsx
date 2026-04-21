@@ -36,7 +36,8 @@ const createCivilianIcon = () => {
   });
 };
 
-const TacticalMap = ({ events, layerData, selectedEvent, layers }) => {
+const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }) => {
+  const [map, setMap] = useState(null);
   const navigate = useNavigate();
 
   const handleAnalyzeSector = (ev) => {

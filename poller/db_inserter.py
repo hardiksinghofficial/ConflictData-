@@ -50,13 +50,14 @@ async def upsert_event(event: Dict[str, Any]):
             fatalities, fatalities_civilians, fatalities_confidence,
             severity, severity_score, title, notes, tags, source_url, category,
             conflict_id, conflict_name,
-            geo_confidence, geo_method, geocode_provider, location_raw
+            geo_confidence, geo_method, geocode_provider, location_raw,
+            ai_analysis
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
             $12::double precision, $13::double precision, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
             $15, $16, $17, $18, $19, $20, $21,
             $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33,
-            $34, $35, $36, $37
+            $34, $35, $36, $37, $38
         )
         ON CONFLICT (event_id) DO UPDATE SET
             severity_score = EXCLUDED.severity_score,
@@ -66,6 +67,7 @@ async def upsert_event(event: Dict[str, Any]):
             geo_confidence = EXCLUDED.geo_confidence,
             geo_method = EXCLUDED.geo_method,
             location_raw = EXCLUDED.location_raw,
+            ai_analysis = EXCLUDED.ai_analysis,
             conflict_id = EXCLUDED.conflict_id,
             conflict_name = EXCLUDED.conflict_name,
             ingested_at = NOW();
@@ -108,7 +110,8 @@ async def upsert_event(event: Dict[str, Any]):
             event.get("geo_confidence"),
             event.get("geo_method"),
             event.get("geocode_provider"),
-            event.get("location_raw")
+            event.get("location_raw"),
+            event.get("ai_analysis")
         )
         
         try:
@@ -131,7 +134,8 @@ async def upsert_event(event: Dict[str, Any]):
                 "actor1": event.get("actor1"),
                 "weapon": event.get("weapon"),
                 "fatalities": event.get("fatalities", 0),
-                "notes": event.get("notes", "")
+                "notes": event.get("notes", ""),
+                "ai_analysis": event.get("ai_analysis", "")
             }
             await conn.execute(f"SELECT pg_notify('new_conflict_event', $1)", json.dumps(payload))
             log.debug(f"Upserted and Enriched Notified event {event['event_id']}")
