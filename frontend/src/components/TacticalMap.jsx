@@ -148,44 +148,80 @@ const TacticalMap = ({ events, layerData, selectedEvent, layers }) => {
         ))}
 
         {/* KINETIC FEED (LIVE EVENTS) */}
-        {layers.kinetic.active && (events || []).map((ev) => (
-          <Marker 
-            key={ev.event_id} 
-            position={[ev.lat, ev.lon]}
-            icon={createRadarIcon(ev.severity_score)}
-            opacity={layers.kinetic.opacity}
-          >
-            <Popup className="tactical-popup">
-              <div className="popup-grid">
-                <div className="popup-specs" style={{ borderLeft: `4px solid ${ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)'}` }}>
-                   <div style={{ fontSize: '9px', fontWeight: 900, color: ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)', letterSpacing: '1.5px' }}>
-                    {ev.severity_score > 8 ? 'KINETIC' : 'TACTICAL'}
-                   </div>
-                   <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '10px', color: 'var(--text-secondary)' }}>SEVERITY</div>
-                   <div style={{ fontSize: '20px', fontWeight: 900, color: 'white' }}>{ev.severity_score}</div>
-                   <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '20px', color: 'var(--text-secondary)' }}>LOC</div>
-                   <div style={{ fontSize: '11px', fontWeight: 800 }}>{ev.country_iso3}</div>
-                </div>
-                <div className="popup-intel">
-                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--accent-cyan)', marginBottom: '8px' }}>[SITREP: ENCRYPTED]</div>
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'white', lineHeight: '1.3', marginBottom: '12px' }}>{ev.title}</div>
-                    
-                    {/* ENRICHED TACTICAL DATA */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px', padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
-                       {ev.actor1 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-cyan)' }}>ACTOR:</span> {ev.actor1.toUpperCase()}</div>}
-                       {ev.weapon && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--text-dim)' }}>EQP:</span> {ev.weapon.toUpperCase()}</div>}
-                       {ev.fatalities > 0 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-red)' }}>KIA:</span> {ev.fatalities}</div>}
-                       {ev.notes && <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid var(--border-glass)', paddingTop: '6px' }}>{ev.notes}</div>}
-                    </div>
+        {layers.kinetic.active && (events || []).map((ev) => {
+          const isExact = ev.geo_precision === 1;
+          const isCountryFallback = ev.geo_precision === 3;
+          
+          return (
+            <React.Fragment key={ev.event_id}>
+              {/* Uncertainty Zone for non-exact points */}
+              {!isExact && (
+                <Circle 
+                  center={[ev.lat, ev.lon]}
+                  radius={isCountryFallback ? 150000 : 45000}
+                  pathOptions={{ 
+                    color: ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)',
+                    fillOpacity: 0.1,
+                    weight: 1,
+                    dashArray: '5, 10'
+                  }}
+                />
+              )}
 
-                    <button className="nav-command-btn active" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleAnalyzeSector(ev)}>
-                       DEEP ANALYZE SECTOR
-                    </button>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              <Marker 
+                position={[ev.lat, ev.lon]}
+                icon={createRadarIcon(ev.severity_score, isExact ? undefined : '#94a3b8')}
+                opacity={layers.kinetic.opacity}
+              >
+                <Popup className="tactical-popup">
+                  <div className="popup-grid">
+                    <div className="popup-specs" style={{ borderLeft: `4px solid ${ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)'}` }}>
+                      <div style={{ fontSize: '9px', fontWeight: 900, color: ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)', letterSpacing: '1.5px' }}>
+                        {isExact ? (ev.severity_score > 8 ? 'KINETIC' : 'TACTICAL') : 'APPROXIMATE'}
+                      </div>
+                      
+                      {/* ACCURACY BADGE */}
+                      <div style={{ 
+                        marginTop: '8px', padding: '2px 4px', background: 'rgba(255,255,255,0.05)', 
+                        borderRadius: '3px', fontSize: '8px', fontWeight: 900, textAlign: 'center',
+                        color: isExact ? 'var(--accent-cyan)' : 'var(--text-dim)',
+                        border: `1px solid ${isExact ? 'var(--accent-cyan)' : 'var(--border-glass)'}`
+                      }}>
+                        {ev.geo_precision === 1 ? 'EXACT' : ev.geo_precision === 2 ? 'ADMIN-LEVEL' : 'COUNTRY-LEVEL'}
+                      </div>
+
+                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '10px', color: 'var(--text-secondary)' }}>SEVERITY</div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: 'white' }}>{ev.severity_score}</div>
+                      
+                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '15px', color: 'var(--text-secondary)' }}>CONFIDENCE</div>
+                      <div style={{ fontSize: '12px', fontWeight: 900, color: 'var(--accent-cyan)' }}>{Math.round(ev.geo_confidence * 100)}%</div>
+                      
+                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '15px', color: 'var(--text-secondary)' }}>LOC</div>
+                      <div style={{ fontSize: '11px', fontWeight: 800 }}>{ev.country_iso3}</div>
+                    </div>
+                    <div className="popup-intel">
+                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--accent-cyan)', marginBottom: '8px' }}>[SITREP: ENCRYPTED]</div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'white', lineHeight: '1.3', marginBottom: '12px' }}>{ev.title}</div>
+                        
+                        {/* ENRICHED TACTICAL DATA */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px', padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
+                          {ev.actor1 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-cyan)' }}>ACTOR:</span> {ev.actor1.toUpperCase()}</div>}
+                          {ev.weapon && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--text-dim)' }}>EQP:</span> {ev.weapon.toUpperCase()}</div>}
+                          {ev.fatalities > 0 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-red)' }}>KIA:</span> {ev.fatalities}</div>}
+                          {ev.notes && <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid var(--border-glass)', paddingTop: '6px' }}>{ev.notes}</div>}
+                          {ev.location_raw && <div style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '4px' }}>Extracted: "{ev.location_raw}"</div>}
+                        </div>
+
+                        <button className="nav-command-btn active" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleAnalyzeSector(ev)}>
+                          DEEP ANALYZE SECTOR
+                        </button>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            </React.Fragment>
+          );
+        })}
 
         {/* STRATEGIC MONITOR (TOP-LEVEL) */}
         {layers.priority.active && (layerData.monitor || []).map((m, i) => (
@@ -288,7 +324,10 @@ const MapController = ({ selectedEvent }) => {
     const map = useMap();
     useEffect(() => { map.setMinZoom(2); }, [map]);
     useEffect(() => {
-        if (selectedEvent) map.flyTo([selectedEvent.lat, selectedEvent.lon], 7, { duration: 2 });
+        if (selectedEvent) {
+          const zoomLevel = selectedEvent.geo_precision === 1 ? 9 : selectedEvent.geo_precision === 2 ? 6 : 4;
+          map.flyTo([selectedEvent.lat, selectedEvent.lon], zoomLevel, { duration: 2 });
+        }
     }, [selectedEvent, map]);
     return null;
 };

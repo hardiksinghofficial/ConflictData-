@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from poller.db_inserter import upsert_event
-from poller.geo_utils import geocode_nominatim_with_fallback, extract_location_ner
+from poller.geo_utils import geocode_ranked, extract_location_entities
 from poller.classifier import classify_event_llm
 
 log = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ RSS_FEEDS = [
 CONFLICT_KEYWORDS = ['battle','strike','attack','shelling','airstrike',
                      'missile','killed','fatalities','troops','offensive', 'war', 'army']
 
-def build_event(entry, lat, lon, country, iso3, ai_res, source='RSS'):
+def build_event(entry, geo_res, ai_res, source='RSS'):
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
     uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, entry.get('link', ''))).split('-')[0]
     return {
@@ -29,11 +29,16 @@ def build_event(entry, lat, lon, country, iso3, ai_res, source='RSS'):
         "source_reliability": "MEDIUM",
         "event_time": event_time,
         "event_date": event_time.date(),
-        "country": country,  
-        "country_iso3": iso3, 
-        "lat": lat,           
-        "lon": lon,           
-        "geo_precision": 3,
+        "country": geo_res["country"],  
+        "country_iso3": geo_res["iso3"],
+        "admin1": geo_res.get("admin1"),
+        "lat": geo_res["lat"],           
+        "lon": geo_res["lon"],           
+        "geo_precision": geo_res["precision"],
+        "geo_confidence": geo_res["confidence"],
+        "geo_method": geo_res["method"],
+        "geocode_provider": geo_res["provider"],
+        "location_raw": ai_res.get("location_raw"),
         "event_type": ai_res.get("event_type", "Other"),
         "severity": "HIGH" if ai_res["severity_score"] > 7 else "MEDIUM" if ai_res["severity_score"] > 4 else "LOW",
         "severity_score": ai_res.get("severity_score", 3.0),
@@ -65,13 +70,13 @@ async def poll_rss():
                 ai_res = await classify_event_llm(entry.get('title',''), entry.get('summary',''))
                 
                 # 2. High-Fidelity Geocoding using AI-extracted entities
-                # This significantly reduces 'Unknown' results
-                lat, lon, country, iso3 = await geocode_nominatim_with_fallback(
+                geo_res = await geocode_ranked(
                     ai_res.get("location"), 
-                    ai_res.get("country")
+                    ai_res.get("country"),
+                    ai_res.get("location_admin1")
                 )
                 
-                event = build_event(entry, lat, lon, country, iso3, ai_res, source='RSS')
+                event = build_event(entry, geo_res, ai_res, source='RSS')
                 await upsert_event(event)
                 count += 1
                 

@@ -80,6 +80,10 @@ async def get_conflicts(
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
         d["event_date"] = d["event_date"].isoformat() if d["event_date"] else None
         d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
+        # New Precision Metadata
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
 
     response = {
         "status": 200,
@@ -115,6 +119,9 @@ async def get_recent_conflicts(request: Request, days: int = 7, limit: int = 100
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
         d["event_date"] = d["event_date"].isoformat() if d["event_date"] else None
         d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
 
     response = {
         "status": 200,
@@ -143,8 +150,10 @@ async def get_ongoing_conflicts(request: Request, limit: int = 50):
     
     data = [dict(r) for r in records]
     for d in data:
-        if d.get("geom"): del d["geom"]
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
     
     res = {"status": 200, "success": True, "count": len(data), "data": data}
     await set_cache(cache_key, res, ttl=60) # Short TTL for live data
@@ -170,8 +179,10 @@ async def get_historical_conflicts(request: Request, days_ago: int = 2, limit: i
 
     data = [dict(r) for r in records]
     for d in data:
-        if d.get("geom"): del d["geom"]
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
 
     res = {"status": 200, "success": True, "count": len(data), "data": data}
     await set_cache(cache_key, res, ttl=3600) # Long TTL for history
@@ -205,11 +216,12 @@ async def get_conflicts_near(
         
     data = [dict(r) for r in records]
     for d in data:
-        if d.get("geom"):
-            del d["geom"] # exclude raw postgis geom obj from json
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
         d["event_date"] = d["event_date"].isoformat() if d["event_date"] else None
         d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
 
     response = {
         "status": 200,
@@ -237,10 +249,12 @@ async def get_conflicts_country(request: Request, iso3: str, days: int = 30, lim
         
     data = [dict(r) for r in records]
     for d in data:
-        if d.get("geom"): del d["geom"]
         d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
         d["event_date"] = d["event_date"].isoformat() if d["event_date"] else None
         d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
+        d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+        d["is_approximate"] = d.get("geo_precision", 3) >= 3
+        if d.get("geom"): del d["geom"]
 
     response = {
         "status": 200,
@@ -262,10 +276,12 @@ async def get_conflict_detail(event_id: str):
         raise HTTPException(status_code=404, detail="Event not found")
         
     d = dict(record)
-    if d.get("geom"): del d["geom"]
     d["event_time"] = d["event_time"].isoformat() + "Z" if d["event_time"] else None
     d["event_date"] = d["event_date"].isoformat() if d["event_date"] else None
     d["ingested_at"] = d["ingested_at"].isoformat() + "Z" if d.get("ingested_at") else None
+    d["geo_confidence"] = float(d.get("geo_confidence") or 0.0)
+    d["is_approximate"] = d.get("geo_precision", 3) >= 3
+    if d.get("geom"): del d["geom"]
 
     return {
         "status": 200,

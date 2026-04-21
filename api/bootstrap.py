@@ -102,6 +102,20 @@ async def bootstrap_db():
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_geom ON conflict_events USING GIST(geom);")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_search ON intel_articles USING GIN(search_vector);")
             
+            # 5. Geocoding Metadata V2 Migration
+            log.info("Checking for Geospatial Metadata V2 columns...")
+            await conn.execute("""
+                ALTER TABLE conflict_events 
+                ADD COLUMN IF NOT EXISTS geo_confidence NUMERIC(4,3),
+                ADD COLUMN IF NOT EXISTS geo_method VARCHAR(40),
+                ADD COLUMN IF NOT EXISTS geocode_provider VARCHAR(40),
+                ADD COLUMN IF NOT EXISTS location_raw TEXT,
+                ADD COLUMN IF NOT EXISTS location_admin1 VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS geo_validation_flags TEXT[];
+                
+                CREATE INDEX IF NOT EXISTS idx_geo_confidence ON conflict_events(geo_confidence);
+            """)
+            
             log.info("[Bootstrap] Database schema validation and initialization complete.")
     except Exception as e:
         log.error(f"[Bootstrap] Critical Failure: {e}")

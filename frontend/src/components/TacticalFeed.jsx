@@ -101,8 +101,20 @@ const TacticalFeed = ({ events, selectedId, onSelectEvent }) => {
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                        <MapPin size={10} style={{ opacity: 0.5 }} /> {ev.city || 'Sector Unknown'}, {ev.country}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MapPin size={10} style={{ opacity: 0.5 }} /> {ev.city || 'Sector Unknown'}, {ev.country}
+                        </div>
+                        
+                        {/* UNCERTAINTY BADGE */}
+                        <div style={{ 
+                          padding: '1px 5px', borderRadius: '4px', fontSize: '8px', fontWeight: 900,
+                          color: ev.geo_precision === 1 ? 'var(--accent-cyan)' : 'var(--text-dim)',
+                          border: `1px solid ${ev.geo_precision === 1 ? 'var(--accent-cyan)' : 'var(--border-glass)'}`,
+                          opacity: 0.7
+                        }}>
+                          {ev.geo_precision === 1 ? 'EXACT' : ev.geo_precision === 2 ? 'ADMIN-LVL' : 'APPROX'} ({Math.round(ev.geo_confidence * 100)}%)
+                        </div>
                       </div>
                       <ChevronRight size={14} style={{ opacity: 0.2 }} />
                     </div>

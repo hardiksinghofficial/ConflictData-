@@ -49,17 +49,23 @@ async def upsert_event(event: Dict[str, Any]):
             actor1, actor1_type, actor2, actor2_type,
             fatalities, fatalities_civilians, fatalities_confidence,
             severity, severity_score, title, notes, tags, source_url, category,
-            conflict_id, conflict_name
+            conflict_id, conflict_name,
+            geo_confidence, geo_method, geocode_provider, location_raw
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
             $12::double precision, $13::double precision, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
             $15, $16, $17, $18, $19, $20, $21,
-            $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33
+            $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33,
+            $34, $35, $36, $37
         )
         ON CONFLICT (event_id) DO UPDATE SET
             severity_score = EXCLUDED.severity_score,
             notes = EXCLUDED.notes,
             category = EXCLUDED.category,
+            geo_precision = EXCLUDED.geo_precision,
+            geo_confidence = EXCLUDED.geo_confidence,
+            geo_method = EXCLUDED.geo_method,
+            location_raw = EXCLUDED.location_raw,
             conflict_id = EXCLUDED.conflict_id,
             conflict_name = EXCLUDED.conflict_name,
             ingested_at = NOW();
@@ -98,7 +104,11 @@ async def upsert_event(event: Dict[str, Any]):
             event.get("source_url"),
             event.get("category", "GENERAL"),
             conflict_id,
-            conflict_name
+            conflict_name,
+            event.get("geo_confidence"),
+            event.get("geo_method"),
+            event.get("geocode_provider"),
+            event.get("location_raw")
         )
         
         try:
@@ -112,6 +122,8 @@ async def upsert_event(event: Dict[str, Any]):
                 "country": event["country"],
                 "lat": event["lat"],
                 "lon": event["lon"],
+                "geo_precision": event.get("geo_precision", 3),
+                "geo_confidence": event.get("geo_confidence", 0.0),
                 "severity_score": event.get("severity_score", 0.0),
                 "event_type": event.get("event_type"),
                 "category": event.get("category", "GENERAL"),

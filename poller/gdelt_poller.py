@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from poller.db_inserter import upsert_event
 from poller.rss_poller import extract_location_ner
-from poller.geo_utils import geocode_nominatim_with_fallback
+from poller.geo_utils import geocode_ranked
 from poller.classifier import classify_event_llm
 
 log = logging.getLogger(__name__)
@@ -80,9 +80,10 @@ async def poll_gdelt():
             ai_res = await classify_event_llm(title)
             
             # 2. High-Fidelity Geocoding using AI-extracted entities
-            lat, lon, country, iso3 = await geocode_nominatim_with_fallback(
+            geo_res = await geocode_ranked(
                 ai_res.get("location"), 
-                ai_res.get("country")
+                ai_res.get("country"),
+                ai_res.get("location_admin1")
             )
             
             uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
@@ -94,11 +95,16 @@ async def poll_gdelt():
                 "source_reliability": "MEDIUM",
                 "event_time": event_time,
                 "event_date": event_time.date(),
-                "country": country,
-                "country_iso3": iso3,
-                "lat": lat,
-                "lon": lon,
-                "geo_precision": 2 if lat != 0 else 3,
+                "country": geo_res["country"],
+                "country_iso3": geo_res["iso3"],
+                "admin1": geo_res.get("admin1"),
+                "lat": geo_res["lat"],
+                "lon": geo_res["lon"],
+                "geo_precision": geo_res["precision"],
+                "geo_confidence": geo_res["confidence"],
+                "geo_method": geo_res["method"],
+                "geocode_provider": geo_res["provider"],
+                "location_raw": ai_res.get("location_raw"),
                 "event_type": ai_res.get("event_type", "Other"),
                 "severity": "HIGH" if ai_res.get("severity_score", 0) > 7 else "MEDIUM" if ai_res.get("severity_score", 0) > 4 else "LOW",
                 "severity_score": ai_res.get("severity_score", 3.0),
