@@ -126,7 +126,11 @@ const Dashboard = () => {
   }, []);
 
   const togglePanel = (panel) => setActivePanels(prev => ({ ...prev, [panel]: !prev[panel] }));
-  const handleSelectEvent = (event) => { setSelectedEvent(event); setTimeout(() => setSelectedEvent(null), 2500); };
+  
+  const handleSelectEvent = (event) => { 
+    setSelectedEvent(event); 
+    setActiveIntelEvent(event); // Open the intelligence card automatically
+  };
 
   return (
     <div className="war-room-layout">
@@ -174,7 +178,7 @@ const Dashboard = () => {
                   width: '32px', height: '32px', borderRadius: '4px', 
                   background: stats.sitrep.intensity === 'HIGH' ? 'rgba(244, 63, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                   border: `1px solid ${stats.sitrep.intensity === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-amber)'}`,
-                  display: 'flex', alignItems: 'center', justifyCenter: 'center',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   animation: stats.sitrep.intensity === 'HIGH' ? 'pulse-red 2s infinite' : 'none'
                 }}>
                   <AlertTriangle size={18} color={stats.sitrep.intensity === 'HIGH' ? 'var(--accent-red)' : 'var(--accent-amber)'} style={{ margin: 'auto' }} />

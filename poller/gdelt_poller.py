@@ -5,7 +5,6 @@ import uuid
 import re
 from datetime import datetime, timezone
 from poller.db_inserter import upsert_event
-from poller.rss_poller import extract_location_ner
 from poller.geo_utils import geocode_ranked
 from poller.classifier import classify_event_llm
 

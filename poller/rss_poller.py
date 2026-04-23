@@ -1,9 +1,10 @@
 import feedparser
 import logging
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from poller.db_inserter import upsert_event
-from poller.geo_utils import geocode_ranked, extract_location_entities
+from poller.geo_utils import geocode_ranked
 from poller.classifier import classify_event_llm
 
 log = logging.getLogger(__name__)

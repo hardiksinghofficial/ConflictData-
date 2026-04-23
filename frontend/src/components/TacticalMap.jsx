@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -38,12 +37,6 @@ const createCivilianIcon = () => {
 
 const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }) => {
   const [map, setMap] = useState(null);
-  const navigate = useNavigate();
-
-  const handleAnalyzeSector = (ev) => {
-    const context = `Analyze specifically this event: ${ev.title} in ${ev.city}, ${ev.country}. Type: ${ev.event_type}. Severity: ${ev.severity_score}. Note: ${ev.notes}`;
-    navigate('/sitrep', { state: { context } });
-  };
   
   // Calculate Surge Centroids from Trend Data + Ongoing Events
   const surgeMarkers = useMemo(() => {
@@ -152,6 +145,7 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
         {layers.kinetic.active && (events || []).map((ev) => {
           const isExact = ev.geo_precision === 1;
           const isCountryFallback = ev.geo_precision === 3;
+          const eventColor = ev.severity_score > 8 ? '#f43f5e' : ev.severity_score > 5 ? '#f59e0b' : '#06b6d4';
           
           return (
             <React.Fragment key={ev.event_id}>
@@ -161,7 +155,7 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
                   center={[ev.lat, ev.lon]}
                   radius={isCountryFallback ? 150000 : 45000}
                   pathOptions={{ 
-                    color: ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)',
+                    color: eventColor,
                     fillOpacity: 0.1,
                     weight: 1,
                     dashArray: '5, 10'
@@ -171,8 +165,9 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
 
               <Marker 
                 position={[ev.lat, ev.lon]}
-                icon={createRadarIcon(ev.severity_score, isExact ? undefined : '#94a3b8')}
-                opacity={layers.kinetic.opacity}
+                icon={createRadarIcon(ev.severity_score, eventColor)}
+                opacity={isExact ? 1 : 0.7}
+                zIndexOffset={isExact ? 1000 : 500}
               >
                 <Popup className="tactical-popup">
                   <div className="popup-grid">
@@ -213,7 +208,7 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
                           {ev.location_raw && <div style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '4px' }}>Extracted: "{ev.location_raw}"</div>}
                         </div>
 
-                        <button className="nav-command-btn active" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleAnalyzeSector(ev)}>
+                        <button className="nav-command-btn active" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onDeepAnalyze(ev)}>
                           DEEP ANALYZE SECTOR
                         </button>
                     </div>
