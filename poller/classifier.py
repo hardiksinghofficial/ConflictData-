@@ -26,7 +26,8 @@ CATEGORIES = {
             r"\bar(my|mies)\b", r"\btroops?\b", r"\bmilitary\b", r"\bair\s?strike\b",
             r"\bmissile\b", r"\bshelling\b", r"\boffensive\b", r"\bcmdrs?\b",
             r"\bcommander\b", r"\bforces?\b", r"\battalion\b", r"\binvasion\b",
-            r"\bartiller(y|ies)\b", r"\btanks?\b", r"\bconvoy\b"
+            r"\bartiller(y|ies)\b", r"\btanks?\b", r"\bconvoy\b", r"\bstrikes?\b",
+            r"\battacks?\b", r"\bkill(ed|s)?\b"
         ],
         "base_severity": 7.0
     },

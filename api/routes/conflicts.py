@@ -144,7 +144,7 @@ async def get_ongoing_conflicts(request: Request, limit: int = 50):
     query = """
     SELECT * FROM conflict_events 
     WHERE event_time >= NOW() - INTERVAL '7 days'
-    AND category IN ('MILITARY', 'MILITANT', 'TERRORIST')
+    AND (category IN ('MILITARY', 'MILITANT', 'TERRORIST') OR severity_score >= 7.0)
     ORDER BY event_time DESC LIMIT $1
     """
     async with db.pool.acquire() as conn:
