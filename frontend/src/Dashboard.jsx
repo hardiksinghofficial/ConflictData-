@@ -216,10 +216,6 @@ const Dashboard = () => {
           <IncidentIntelligenceCard 
             event={activeIntelEvent} 
             onClose={() => setActiveIntelEvent(null)}
-            onRequestLiveAnalysis={(ev) => {
-               // Optional: trigger manual live re-analysis if ever needed
-               console.log("Live analysis requested for", ev.event_id);
-            }}
           />
         )}
 

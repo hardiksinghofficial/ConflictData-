@@ -153,27 +153,31 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     Resilient Multi-Engine Classification Gateway.
     Tries Groq -> Gemini -> HF -> Regex Fallback.
     """
-    prompt = f"""
-    Analyze this news event for a conflict intelligence database:
-    Title: {title}
-    Summary: {summary}
+    prompt = f"""Analyze this news headline for an ELITE conflict intelligence database.
+Your goal is absolute accuracy. Only classify REAL kinetic/military/violent incidents.
+Reject diplomacy, politics, economics, sports, or opinion articles.
 
-    Return a JSON object with:
-    - category: (MILITARY, TERRORIST, MILITANT, CIVIL_UNREST, or GENERAL)
-    - event_type: (Armed Clash, Airstrike / Artillery, Terrorist Attack, Arrests / Detainment, Strategic Report, or Other)
-    - location_city: Specific city or town name
-    - location_admin1: Province, state, or oblast name
-    - location_country: The country name
-    - location_text_span: The verbatim phrase from the title/summary referring to the location
-    - location_confidence: Float 0-1 indicating extraction certainty
-    - actor1: The primary group or entity (e.g. 'IDF', 'Wagner Group', 'Protestors')
-    - actor2: The secondary entity or target
-    - weapon: Keywords for weapons used (e.g. 'F-16', 'Drone', 'Rocket')
-    - fatalities: Estimated count if mentioned, else 0
-    - severity_score: 0 to 10 based on tactical impact
-    - summary_short: 1 sentence tactical summary
-    - deep_analysis: 2-3 paragraph professional intelligence SITREP. Include likely strategic intent, immediate escalation risks, and any historical context regarding the actors or location. Use a sober, analytical tone.
-    """
+Title: {title}
+Summary: {summary}
+
+Return a JSON object with these fields:
+- is_conflict_tactical: Boolean. True ONLY if this is a real kinetic event (explosions, airstrikes, armed clashes, shootings, bombings, military operations). False for diplomacy, sanctions, protests, elections, humanitarian aid, opinion pieces, or general politics.
+- validation_logic: 1 sentence explaining your reasoning.
+- category: MILITARY, TERRORIST, MILITANT, CIVIL_UNREST, or GENERAL
+- strategic_significance: CRITICAL, HIGH, MEDIUM, or LOW
+- event_type: Armed Clash, Airstrike / Artillery, Terrorist Attack, Drone Strike, Naval Engagement, Arrests / Detainment, or Other
+- location_landmark: Specific facility name if mentioned (base, airport, port, checkpoint). null if none.
+- location_city: Specific city or town. null if unclear.
+- location_admin1: Province, state, or oblast name. null if unclear.
+- location_country: Country name. Required.
+- location_text_span: The exact phrase from the title referring to the location.
+- confidence_score: Float 0.0-1.0 indicating overall data reliability.
+- actor1: Primary armed group or military force. Be specific (e.g. "72nd Mechanized Brigade" not just "Ukraine").
+- actor2: Secondary entity or target. null if unknown.
+- weapon: Specific weapon system if mentioned (e.g. "Shahed-136", "HIMARS", "RPG-7"). null if not mentioned.
+- fatalities: Integer count. 0 if not mentioned or unknown.
+- severity_score: Float 0-10 based on tactical impact and scale.
+"""
 
     # ENGINE TIER 1: GROQ
     res = await classify_with_groq(prompt)
@@ -203,21 +207,36 @@ async def classify_event_llm(title: str, summary: str = "") -> Dict[str, Any]:
     }
 
 def parse_llm_res(res: Dict, provider: str) -> Dict[str, Any]:
+    # World Monitor Noise Gate: Reject non-conflict or low-confidence events
+    is_tactical = res.get("is_conflict_tactical")
+    confidence = 0.0
+    try:
+        confidence = float(res.get("confidence_score", 0))
+    except (ValueError, TypeError):
+        confidence = 0.0
+
+    if not is_tactical or confidence < 0.7:
+        return {"is_noise": True, "logic": res.get("validation_logic", "Rejected by noise gate")}
+
+    significance = res.get("strategic_significance", "LOW")
+
     return {
+        "is_noise": False,
         "category": res.get("category", "GENERAL").upper(),
         "severity_score": float(res.get("severity_score", 3.0)),
-        "location": res.get("location_city"),
+        "strategic_relevance": significance,
+        "location": res.get("location_landmark") or res.get("location_city"),
         "location_admin1": res.get("location_admin1"),
         "country": res.get("location_country"),
         "location_raw": res.get("location_text_span"),
-        "extraction_confidence": float(res.get("location_confidence", 0.5)),
-        "tags": list(set([res.get("actor1"), res.get("weapon")] + (res.get("weapon_list", []) if isinstance(res.get("weapon_list"), list) else []))),
+        "extraction_confidence": confidence,
+        "tags": [t for t in [res.get("actor1"), res.get("weapon")] if t],
         "event_type": res.get("event_type", "Other"),
         "actor1": res.get("actor1"),
         "actor2": res.get("actor2"),
+        "weapon": res.get("weapon"),
         "fatalities": int(res.get("fatalities", 0)),
-        "notes": res.get("summary_short", ""),
-        "ai_analysis": res.get("deep_analysis", ""),
+        "notes": f"[{significance}] {res.get('validation_logic', '')}",
         "ai_classified": True,
         "provider": provider
     }

@@ -112,10 +112,14 @@ async def bootstrap_db():
                 ADD COLUMN IF NOT EXISTS location_raw TEXT,
                 ADD COLUMN IF NOT EXISTS location_admin1 VARCHAR(100),
                 ADD COLUMN IF NOT EXISTS geo_validation_flags TEXT[],
-                ADD COLUMN IF NOT EXISTS ai_analysis TEXT;
+                ADD COLUMN IF NOT EXISTS ai_analysis TEXT,
+                ADD COLUMN IF NOT EXISTS verification_count INTEGER DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS source_urls TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS strategic_relevance VARCHAR(15) DEFAULT 'LOW';
                 
                 CREATE INDEX IF NOT EXISTS idx_geo_confidence ON conflict_events(geo_confidence);
                 CREATE INDEX IF NOT EXISTS idx_ai_analysis ON conflict_events USING GIN(to_tsvector('english', COALESCE(ai_analysis, '')));
+                CREATE INDEX IF NOT EXISTS idx_verification ON conflict_events(verification_count DESC);
             """)
             
             log.info("[Bootstrap] Database schema validation and initialization complete.")

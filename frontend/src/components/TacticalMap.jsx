@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Target, Shield, Zap, MapPin, Activity, AlertTriangle, Users } from 'lucide-react';
@@ -128,6 +128,30 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
            </Circle>
         ))}
 
+        {/* STRATEGIC TENSION VECTORS (Frontier Intelligence) */}
+        {useMemo(() => {
+          const highIntensity = (events || []).filter(e => e.severity_score > 7.5);
+          const vectors = [];
+          for (let i = 0; i < highIntensity.length; i++) {
+            for (let j = i + 1; j < highIntensity.length; j++) {
+              const e1 = highIntensity[i];
+              const e2 = highIntensity[j];
+              // Connect if same country or same actor (Strategic Handshake)
+              if (e1.country_iso3 === e2.country_iso3 || (e1.actor1 && e1.actor1 === e2.actor1)) {
+                vectors.push({ id: `${e1.id}-${e2.id}`, coords: [[e1.lat, e1.lon], [e2.lat, e2.lon]] });
+              }
+            }
+          }
+          return vectors.slice(0, 8); // Performance limit
+        }, [events]).map(v => (
+          <Polyline 
+            key={`vector-${v.id}`} 
+            positions={v.coords} 
+            className="tension-vector"
+            pathOptions={{ color: 'var(--accent-red)', weight: 1, opacity: 0.3 }}
+          />
+        ))}
+
         {/* CIVILIAN RISK VECTOR */}
         {layers.civilians.active && (events || []).filter(e => e.fatalities_civilians > 0).map(ev => (
           <Marker key={`civ-${ev.event_id}`} position={[ev.lat, ev.lon]} icon={createCivilianIcon()}>
@@ -149,6 +173,16 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
           
           return (
             <React.Fragment key={ev.event_id}>
+              {/* Verified Incident Halo (Frontier Intelligence) */}
+              {ev.verification_count > 1 && (
+                <Circle 
+                  center={[ev.lat, ev.lon]}
+                  radius={8000}
+                  className="verified-pulse"
+                  pathOptions={{ color: 'var(--accent-green)', fillColor: 'var(--accent-green)', fillOpacity: 0.2, weight: 1 }}
+                />
+              )}
+
               {/* Uncertainty Zone for non-exact points */}
               {!isExact && (
                 <Circle 
@@ -170,47 +204,117 @@ const TacticalMap = ({ events, layerData, selectedEvent, onDeepAnalyze, layers }
                 zIndexOffset={isExact ? 1000 : 500}
               >
                 <Popup className="tactical-popup">
-                  <div className="popup-grid">
-                    <div className="popup-specs" style={{ borderLeft: `4px solid ${ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)'}` }}>
-                      <div style={{ fontSize: '9px', fontWeight: 900, color: ev.severity_score > 8 ? 'var(--accent-red)' : 'var(--accent-amber)', letterSpacing: '1.5px' }}>
-                        {isExact ? (ev.severity_score > 8 ? 'KINETIC' : 'TACTICAL') : 'APPROXIMATE'}
+                  <div style={{ minWidth: '340px', maxWidth: '380px' }}>
+                    {/* THREAT BANNER */}
+                    <div style={{ 
+                      padding: '12px 16px', 
+                      background: `linear-gradient(135deg, ${eventColor}15, transparent)`,
+                      borderBottom: `1px solid ${eventColor}30`,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: eventColor, boxShadow: `0 0 8px ${eventColor}` }}></div>
+                        <span style={{ fontSize: '9px', fontWeight: 900, letterSpacing: '2px', color: eventColor }}>
+                          {ev.event_type?.toUpperCase() || 'ENGAGEMENT'}
+                        </span>
                       </div>
-                      
-                      {/* ACCURACY BADGE */}
-                      <div style={{ 
-                        marginTop: '8px', padding: '2px 4px', background: 'rgba(255,255,255,0.05)', 
-                        borderRadius: '3px', fontSize: '8px', fontWeight: 900, textAlign: 'center',
-                        color: isExact ? 'var(--accent-cyan)' : 'var(--text-dim)',
-                        border: `1px solid ${isExact ? 'var(--accent-cyan)' : 'var(--border-glass)'}`
-                      }}>
-                        {ev.geo_precision === 1 ? 'EXACT' : ev.geo_precision === 2 ? 'ADMIN-LEVEL' : 'COUNTRY-LEVEL'}
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                        {(ev.verification_count || 1) > 1 && (
+                          <span style={{ fontSize: '8px', fontWeight: 900, color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '2px 7px', borderRadius: '3px', border: '1px solid rgba(16,185,129,0.25)' }}>
+                            ✓ {ev.verification_count}
+                          </span>
+                        )}
+                        <span style={{ 
+                          fontSize: '8px', fontWeight: 900, padding: '2px 7px', borderRadius: '3px',
+                          color: isExact ? '#06b6d4' : '#64748b',
+                          border: `1px solid ${isExact ? 'rgba(6,182,212,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                          background: isExact ? 'rgba(6,182,212,0.08)' : 'rgba(255,255,255,0.03)'
+                        }}>
+                          {ev.geo_precision === 1 ? 'EXACT' : ev.geo_precision === 2 ? 'ADMIN' : 'APPROX'}
+                        </span>
                       </div>
-
-                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '10px', color: 'var(--text-secondary)' }}>SEVERITY</div>
-                      <div style={{ fontSize: '20px', fontWeight: 900, color: 'white' }}>{ev.severity_score}</div>
-                      
-                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '15px', color: 'var(--text-secondary)' }}>CONFIDENCE</div>
-                      <div style={{ fontSize: '12px', fontWeight: 900, color: 'var(--accent-cyan)' }}>{Math.round(ev.geo_confidence * 100)}%</div>
-                      
-                      <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '15px', color: 'var(--text-secondary)' }}>LOC</div>
-                      <div style={{ fontSize: '11px', fontWeight: 800 }}>{ev.country_iso3}</div>
                     </div>
-                    <div className="popup-intel">
-                        <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--accent-cyan)', marginBottom: '8px' }}>[SITREP: ENCRYPTED]</div>
-                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'white', lineHeight: '1.3', marginBottom: '12px' }}>{ev.title}</div>
-                        
-                        {/* ENRICHED TACTICAL DATA */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px', padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
-                          {ev.actor1 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-cyan)' }}>ACTOR:</span> {ev.actor1.toUpperCase()}</div>}
-                          {ev.weapon && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--text-dim)' }}>EQP:</span> {ev.weapon.toUpperCase()}</div>}
-                          {ev.fatalities > 0 && <div style={{ fontSize: '9px', fontWeight: 800 }}><span style={{ color: 'var(--accent-red)' }}>KIA:</span> {ev.fatalities}</div>}
-                          {ev.notes && <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-dim)', fontStyle: 'italic', borderTop: '1px solid var(--border-glass)', paddingTop: '6px' }}>{ev.notes}</div>}
-                          {ev.location_raw && <div style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '4px' }}>Extracted: "{ev.location_raw}"</div>}
-                        </div>
 
-                        <button className="nav-command-btn active" style={{ width: '100%', justifyContent: 'center' }} onClick={() => onDeepAnalyze(ev)}>
-                          DEEP ANALYZE SECTOR
-                        </button>
+                    {/* TITLE + LOCATION */}
+                    <div style={{ padding: '14px 16px 10px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 800, color: 'white', lineHeight: '1.35', marginBottom: '8px' }}>
+                        {ev.title}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', color: '#94a3b8' }}>
+                        <MapPin size={10} style={{ opacity: 0.5 }} />
+                        {ev.location_raw || ev.admin1 || ev.country_iso3}
+                        <span style={{ opacity: 0.3 }}>•</span>
+                        {ev.country}
+                      </div>
+                    </div>
+
+                    {/* SEVERITY + STATS ROW */}
+                    <div style={{ padding: '0 16px 14px', display: 'flex', gap: '8px' }}>
+                      {/* Severity Gauge */}
+                      <div style={{ 
+                        flex: 1, padding: '10px', borderRadius: '8px', 
+                        background: `linear-gradient(135deg, ${eventColor}08, ${eventColor}03)`,
+                        border: `1px solid ${eventColor}20`, textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '22px', fontWeight: 900, color: eventColor, lineHeight: 1 }}>{ev.severity_score}</div>
+                        <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', letterSpacing: '1.5px', marginTop: '4px' }}>SEVERITY</div>
+                      </div>
+                      {/* Confidence */}
+                      <div style={{ 
+                        flex: 1, padding: '10px', borderRadius: '8px', 
+                        background: 'rgba(6,182,212,0.04)', border: '1px solid rgba(6,182,212,0.12)', textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '22px', fontWeight: 900, color: '#06b6d4', lineHeight: 1 }}>{Math.round((ev.geo_confidence||0) * 100)}%</div>
+                        <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', letterSpacing: '1.5px', marginTop: '4px' }}>CONFIDENCE</div>
+                      </div>
+                      {/* Fatalities */}
+                      {ev.fatalities > 0 && (
+                        <div style={{ 
+                          flex: 1, padding: '10px', borderRadius: '8px', 
+                          background: 'rgba(244,63,94,0.05)', border: '1px solid rgba(244,63,94,0.15)', textAlign: 'center'
+                        }}>
+                          <div style={{ fontSize: '22px', fontWeight: 900, color: '#f43f5e', lineHeight: 1 }}>{ev.fatalities}</div>
+                          <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', letterSpacing: '1.5px', marginTop: '4px' }}>KIA</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ENTITY PILLS */}
+                    {(ev.actor1 || ev.weapon || ev.actor2) && (
+                      <div style={{ padding: '0 16px 14px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {ev.actor1 && (
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#06b6d4', background: 'rgba(6,182,212,0.08)', padding: '4px 10px', borderRadius: '20px', border: '1px solid rgba(6,182,212,0.2)' }}>
+                            ⚔ {ev.actor1}
+                          </div>
+                        )}
+                        {ev.actor2 && (
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            ⛨ {ev.actor2}
+                          </div>
+                        )}
+                        {ev.weapon && (
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#fbbf24', background: 'rgba(251,191,36,0.08)', padding: '4px 10px', borderRadius: '20px', border: '1px solid rgba(251,191,36,0.2)' }}>
+                            ◈ {ev.weapon}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* FOOTER: ANALYZE + META */}
+                    <div style={{ 
+                      padding: '10px 16px', background: 'rgba(0,0,0,0.25)', borderTop: '1px solid rgba(255,255,255,0.04)',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                      <button 
+                        className="nav-command-btn active" 
+                        style={{ padding: '6px 14px', fontSize: '9px' }} 
+                        onClick={() => onDeepAnalyze(ev)}
+                      >
+                        INTEL REPORT
+                      </button>
+                      <span style={{ fontSize: '8px', color: '#475569', fontFamily: 'var(--font-mono)' }}>
+                        {ev.source || 'SRC'} • {ev.country_iso3}
+                      </span>
                     </div>
                   </div>
                 </Popup>

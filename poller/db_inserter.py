@@ -33,12 +33,44 @@ async def get_pool():
 async def upsert_event(event: Dict[str, Any]):
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Guard: Reject events that failed geocoding entirely
+        if event.get("lat", 0) == 0.0 and event.get("lon", 0) == 0.0:
+            log.warning(f"Dropping event with (0,0) coordinates: {event.get('title', '')[:60]}")
+            return None
+
         # Use Conflict Tracker to group events
         try:
             conflict_id, conflict_name = await identify_or_create_conflict(conn, event)
         except Exception as e:
             log.warning(f"Conflict tracking failed: {e}")
             conflict_id, conflict_name = None, None
+
+        # --- WORLD MONITOR TRIANGULATION: Proximity Search ---
+        # Search for an event within 10km and +/- 12 hours
+        search_query = """
+        SELECT event_id, verification_count, source_urls FROM conflict_events 
+        WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326), 10000)
+          AND event_time >= $3::timestamp - INTERVAL '12 hours'
+          AND event_time <= $3::timestamp + INTERVAL '12 hours'
+        LIMIT 1;
+        """
+        existing = await conn.fetchrow(search_query, event["lon"], event["lat"], event["event_time"])
+        
+        if existing:
+            # INTERFACE: Update existing event with new source and increment verification
+            log.info(f"Triangulation Successful: Merging {event['event_id']} with existing {existing['event_id']}")
+            update_query = """
+            UPDATE conflict_events SET
+                verification_count = verification_count + 1,
+                source_urls = array_append(source_urls, $2),
+                severity_score = GREATEST(severity_score, $3),
+                notes = notes || '\n[UPDATE] ' || $4,
+                ingested_at = NOW()
+            WHERE event_id = $1;
+            """
+            await conn.execute(update_query, existing["event_id"], event.get("source_url"), event.get("severity_score", 0.0), event.get("notes", ""))
+            return existing["event_id"]
+
 
         query = """
         INSERT INTO conflict_events (
@@ -51,13 +83,13 @@ async def upsert_event(event: Dict[str, Any]):
             severity, severity_score, title, notes, tags, source_url, category,
             conflict_id, conflict_name,
             geo_confidence, geo_method, geocode_provider, location_raw,
-            ai_analysis
+            ai_analysis, strategic_relevance, source_urls
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
             $12::double precision, $13::double precision, ST_SetSRID(ST_MakePoint($13::double precision, $12::double precision), 4326), $14,
             $15, $16, $17, $18, $19, $20, $21,
             $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33,
-            $34, $35, $36, $37, $38
+            $34, $35, $36, $37, $38, $39, ARRAY[$30]::text[]
         )
         ON CONFLICT (event_id) DO UPDATE SET
             severity_score = EXCLUDED.severity_score,
@@ -70,6 +102,7 @@ async def upsert_event(event: Dict[str, Any]):
             ai_analysis = EXCLUDED.ai_analysis,
             conflict_id = EXCLUDED.conflict_id,
             conflict_name = EXCLUDED.conflict_name,
+            strategic_relevance = EXCLUDED.strategic_relevance,
             ingested_at = NOW();
         """
         
@@ -111,7 +144,8 @@ async def upsert_event(event: Dict[str, Any]):
             event.get("geo_method"),
             event.get("geocode_provider"),
             event.get("location_raw"),
-            event.get("ai_analysis")
+            event.get("ai_analysis"),
+            event.get("strategic_relevance", "LOW")
         )
         
         try:
@@ -123,6 +157,7 @@ async def upsert_event(event: Dict[str, Any]):
                 "title": event["title"],
                 "city": event.get("city"),
                 "country": event["country"],
+                "country_iso3": event.get("country_iso3"),
                 "lat": event["lat"],
                 "lon": event["lon"],
                 "geo_precision": event.get("geo_precision", 3),
@@ -135,7 +170,11 @@ async def upsert_event(event: Dict[str, Any]):
                 "weapon": event.get("weapon"),
                 "fatalities": event.get("fatalities", 0),
                 "notes": event.get("notes", ""),
-                "ai_analysis": event.get("ai_analysis", "")
+                "ai_analysis": event.get("ai_analysis", ""),
+                "strategic_relevance": event.get("strategic_relevance", "LOW"),
+                "verification_count": 1,
+                "source_urls": [event.get("source_url", "")],
+                "source_url": event.get("source_url", "")
             }
             await conn.execute(f"SELECT pg_notify('new_conflict_event', $1)", json.dumps(payload))
             log.debug(f"Upserted and Enriched Notified event {event['event_id']}")

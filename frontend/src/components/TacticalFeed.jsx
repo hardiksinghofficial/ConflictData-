@@ -69,6 +69,16 @@ const TacticalFeed = ({ events, selectedId, onSelectEvent }) => {
                         <span style={{ fontSize: '9px', fontWeight: 900, color: ev.severity_score >= 8 ? 'var(--accent-red)' : 'var(--text-secondary)', letterSpacing: '1px' }}>
                           {ev.event_type?.toUpperCase() || 'GENERAL'}
                         </span>
+                        {(ev.verification_count || 1) > 1 && (
+                          <span style={{ fontSize: '8px', fontWeight: 900, color: 'var(--accent-green)', background: 'rgba(16,185,129,0.1)', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                            ✓ {ev.verification_count}
+                          </span>
+                        )}
+                        {(ev.strategic_relevance === 'CRITICAL' || ev.strategic_relevance === 'HIGH') && (
+                          <span style={{ fontSize: '8px', fontWeight: 900, color: ev.strategic_relevance === 'CRITICAL' ? 'var(--accent-red)' : 'var(--accent-amber)', background: ev.strategic_relevance === 'CRITICAL' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)', padding: '1px 5px', borderRadius: '3px', border: `1px solid ${ev.strategic_relevance === 'CRITICAL' ? 'rgba(244,63,94,0.3)' : 'rgba(245,158,11,0.3)'}` }}>
+                            {ev.strategic_relevance}
+                          </span>
+                        )}
                       </div>
                       <span style={{ fontSize: '9px', color: 'var(--text-dim)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
                         {getTimeAgo(ev.event_time)}

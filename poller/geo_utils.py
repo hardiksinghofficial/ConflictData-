@@ -10,24 +10,68 @@ import json
 log = logging.getLogger(__name__)
 
 # Tactical Centroids for major conflict zones (High precision manual overrides)
-# Rules: Token boundary matching, contextual agreement.
+# These bypass Nominatim entirely for reliable, instant geocoding of known hotspots.
 HOTSPOTS = {
+    # --- UKRAINE FRONTLINE ---
     "gaza": (31.3547, 34.3088, "Palestine", "PSE"),
+    "gaza strip": (31.3547, 34.3088, "Palestine", "PSE"),
+    "rafah": (31.2768, 34.2457, "Palestine", "PSE"),
+    "khan younis": (31.3462, 34.3015, "Palestine", "PSE"),
+    "khan yunis": (31.3462, 34.3015, "Palestine", "PSE"),
+    "jabalia": (31.5281, 34.4831, "Palestine", "PSE"),
+    "deir al-balah": (31.4180, 34.3509, "Palestine", "PSE"),
+    "nuseirat": (31.4416, 34.3963, "Palestine", "PSE"),
     "west bank": (31.9522, 35.2332, "Palestine", "PSE"),
+    "jenin": (32.4610, 35.3008, "Palestine", "PSE"),
+    "tulkarm": (32.3104, 35.0286, "Palestine", "PSE"),
+    # --- UKRAINE ---
     "donbas": (48.0, 37.8, "Ukraine", "UKR"),
     "donetsk": (48.0196, 37.8018, "Ukraine", "UKR"),
     "luhansk": (48.574, 39.307, "Ukraine", "UKR"),
     "kharkiv": (49.9935, 36.2304, "Ukraine", "UKR"),
     "avdiivka": (48.1366, 37.7347, "Ukraine", "UKR"),
+    "bakhmut": (48.5954, 38.0003, "Ukraine", "UKR"),
+    "zaporizhzhia": (47.8388, 35.1396, "Ukraine", "UKR"),
+    "kherson": (46.6354, 32.6169, "Ukraine", "UKR"),
+    "mariupol": (47.0958, 37.5494, "Ukraine", "UKR"),
+    "pokrovsk": (48.2833, 37.1833, "Ukraine", "UKR"),
+    "kursk": (51.7304, 36.1927, "Russia", "RUS"),
+    "crimea": (45.3, 34.1, "Ukraine", "UKR"),
+    "odesa": (46.4825, 30.7233, "Ukraine", "UKR"),
+    "kyiv": (50.4501, 30.5234, "Ukraine", "UKR"),
+    # --- RED SEA / YEMEN ---
     "red sea": (20.0, 38.0, "International Waters", "INT"),
-    "taiwan strait": (24.0, 119.0, "Taiwan", "TWN"),
-    "south china sea": (12.0, 113.0, "International Waters", "INT"),
+    "hodeidah": (14.7980, 42.9540, "Yemen", "YEM"),
+    "sanaa": (15.3694, 44.1910, "Yemen", "YEM"),
+    "aden": (12.7855, 45.0187, "Yemen", "YEM"),
+    # --- SUDAN ---
     "darfur": (13.0, 25.0, "Sudan", "SDN"),
     "khartoum": (15.5007, 32.5599, "Sudan", "SDN"),
+    "el fasher": (13.6300, 25.3500, "Sudan", "SDN"),
+    "port sudan": (19.6158, 37.2164, "Sudan", "SDN"),
+    # --- HORN OF AFRICA ---
     "tigray": (13.5, 39.0, "Ethiopia", "ETH"),
+    "mogadishu": (2.0469, 45.3182, "Somalia", "SOM"),
+    # --- ASIA ---
     "kabul": (34.555, 69.207, "Afghanistan", "AFG"),
+    "kandahar": (31.6133, 65.7101, "Afghanistan", "AFG"),
+    "myanmar": (21.9162, 95.956, "Myanmar", "MMR"),
+    # --- SAHEL ---
     "mali": (17.57, -3.99, "Mali", "MLI"),
+    "burkina faso": (12.3714, -1.5197, "Burkina Faso", "BFA"),
+    # --- MARITIME ---
     "hormuz": (26.5, 56.5, "International Waters", "INT"),
+    "taiwan strait": (24.0, 119.0, "Taiwan", "TWN"),
+    "south china sea": (12.0, 113.0, "International Waters", "INT"),
+    # --- MIDDLE EAST ---
+    "aleppo": (36.2021, 37.1343, "Syria", "SYR"),
+    "idlib": (35.9306, 36.6339, "Syria", "SYR"),
+    "beirut": (33.8938, 35.5018, "Lebanon", "LBN"),
+    "baghdad": (33.3152, 44.3661, "Iraq", "IRQ"),
+    "mosul": (36.3350, 43.1189, "Iraq", "IRQ"),
+    # --- AFRICA ---
+    "goma": (-1.6785, 29.2284, "DR Congo", "COD"),
+    "beni": (0.4900, 29.4700, "DR Congo", "COD"),
 }
 
 COUNTRY_CENTROIDS = {
@@ -64,8 +108,9 @@ def get_geolocator():
 def normalize_location_text(text: str) -> str:
     if not text: return ""
     t = text.lower()
-    # Remove noise patterns
+    # Remove noise patterns but preserve critical infrastructure identifiers
     t = re.sub(r'\b(near|outside|north of|south of|east of|west of|frontline near|region of|area of)\b', '', t)
+    # Be careful not to remove 'base' or 'port' here
     t = re.sub(r'\b(city|province|district|oblast|state)\b', '', t)
     # Simplify whitespace
     return ' '.join(t.split()).strip()
@@ -126,9 +171,14 @@ async def geocode_ranked(place: str, country: str, admin1: str = None) -> Dict:
             if admin1 and (admin1.lower() in str(addr).lower()):
                 score += 0.20
             
-            # Name Similarity (Simple check - 20%)
+            # PINPOINT LANDMARK BOOST (World Monitor Requirement)
+            landmark_kws = ['base', 'airport', 'port', 'checkpoint', 'refinery', 'plant', 'depot', 'harbor', 'dam']
+            if any(kw in clean_place for kw in landmark_kws) and any(kw in cand.address.lower() for kw in landmark_kws):
+                score += 0.25 # High boost for strategic infrastructure
+            
+            # Name Similarity (Simple check - 15%)
             if clean_place in cand.address.lower():
-                score += 0.20
+                score += 0.15
                 
             # Feature Type Preference (10%)
             if addr.get('city') or addr.get('town') or addr.get('village'):

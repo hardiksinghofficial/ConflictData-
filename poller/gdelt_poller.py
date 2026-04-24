@@ -7,38 +7,46 @@ from datetime import datetime, timezone
 from poller.db_inserter import upsert_event
 from poller.geo_utils import geocode_ranked
 from poller.classifier import classify_event_llm
+from poller.deduplicator import is_duplicate_event
 
 log = logging.getLogger(__name__)
 GDELT_URL = 'https://api.gdeltproject.org/api/v2/doc/doc'
 
-# List of keywords that usually indicate non-tactical news or "noise"
+# Expanded noise patterns — historical, editorial, and non-kinetic content
 NOISE_PATTERNS = [
     r"years ago", r"anniversary", r"memorial", r"remembers", r"history of", 
-    r"how to watch", r"commemorate", r"museum", r"exhibition", r"biography"
+    r"how to watch", r"commemorate", r"museum", r"exhibition", r"biography",
+    r"book review", r"opinion:", r"editorial:", r"analysis:", r"podcast",
+    r"interview with", r"what you need to know", r"explained:", r"timeline of",
+    r"trade war", r"war on drugs", r"war on poverty", r"culture war",
+    r"star wars", r"price war", r"bidding war", r"turf war",
+    r"fantasy football", r"world cup", r"olympic", r"nba ", r"nfl ",
+    r"box office", r"movie", r"tv show", r"streaming", r"netflix",
+    r"stock market", r"wall street", r"cryptocurrency", r"bitcoin",
+    r"election results", r"campaign trail", r"poll shows", r"voter",
 ]
 
 def passes_quality_filter(article):
     title = article.get('title', '')
-    if len(title) < 15:
+    if len(title) < 20:
         return False
     
-    # Filter out historical retrospectives / noise
     title_lower = title.lower()
     for pattern in NOISE_PATTERNS:
         if re.search(pattern, title_lower):
-            log.debug(f"Filtering out noise: {title}")
+            log.debug(f"GDELT noise filter: {title[:60]}")
             return False
             
     return True
 
 async def poll_gdelt():
-    # Stagger startup to avoid simultaneous polling pressure
     await asyncio.sleep(10)
     
+    # Precision query — only actual kinetic/military terms, not broad "war" or "conflict"
     params = {
-        'query': '(conflict OR battle OR airstrike OR war OR "armed clash" OR "suicide bombing") sourcelang:English',
+        'query': '(airstrike OR "armed clash" OR shelling OR artillery OR "drone strike" OR missile OR bombing OR "suicide attack" OR ambush OR mortar OR "killed in" OR "troops deployed" OR "military operation") sourcelang:English',
         'mode': 'artlist',
-        'maxrecords': 100,
+        'maxrecords': 75,
         'format': 'json',
     }
     
@@ -68,22 +76,42 @@ async def poll_gdelt():
     log.info(f"GDELT returned {len(articles)} articles.")
     
     count = 0
+    skipped_noise = 0
+    skipped_dupe = 0
+    skipped_geo = 0
+    
     for article in articles:
         if not passes_quality_filter(article):
              continue
              
         title = article.get("title", "").replace("\n", " ").strip()
         
-        # 1. AI-Powered Insight (Swapped to FIRST for better geography)
+        # Token-saving deduplication
+        if await is_duplicate_event(title):
+            skipped_dupe += 1
+            continue
+
         try:
             ai_res = await classify_event_llm(title)
             
-            # 2. High-Fidelity Geocoding using AI-extracted entities
+            # World Monitor Noise Gate
+            if ai_res.get("is_noise"):
+                log.debug(f"GDELT Skeptic Rejection: {title[:60]}... Reason: {ai_res.get('logic')}")
+                skipped_noise += 1
+                continue
+
+            # High-Fidelity Geocoding
             geo_res = await geocode_ranked(
                 ai_res.get("location"), 
                 ai_res.get("country"),
                 ai_res.get("location_admin1")
             )
+            
+            # Drop failed geocodes — don't pollute the map with (0,0)
+            if geo_res.get("confidence", 0) == 0.0 and geo_res.get("method") == "failed":
+                log.warning(f"GDELT: Dropping event with failed geocode: {title[:60]}")
+                skipped_geo += 1
+                continue
             
             uniq = str(uuid.uuid5(uuid.NAMESPACE_URL, article.get('url', ''))).split('-')[0]
             event_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -115,16 +143,17 @@ async def poll_gdelt():
                 "actor2": ai_res.get("actor2"),
                 "fatalities": ai_res.get("fatalities", 0),
                 "notes": ai_res.get("notes"),
+                "ai_analysis": ai_res.get("ai_analysis"),
+                "strategic_relevance": ai_res.get("strategic_relevance", "LOW"),
             }
             
             await upsert_event(event)
             count += 1
             
-            # 3. Rate Limit Compliance (2s sleep)
             await asyncio.sleep(2.0)
             
         except Exception as e:
             log.error(f"Error processing GDELT article: {e}")
             await asyncio.sleep(5)
         
-    log.info(f"Successfully processed {count} events from GDELT with AI Intelligence.")
+    log.info(f"GDELT: Processed {count} events. Rejected {skipped_noise} noise, {skipped_dupe} dupes, {skipped_geo} bad geo.")
